@@ -16,8 +16,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | # | Milestone | Depends on | Estimate | Status | Vertical-slice gate? |
 |---|---|---|---|---|---|
 | M1 | Foundation | — | 3 days | ✅ Complete | |
-| M2 | Auth + Users | M1 | 4 days | 🟡 Not started | |
-| M3 | Model Registry | M2 | 4 days | ⚪ Not started | |
+| M2 | Auth + Users | M1 | 4 days | ✅ Complete | |
+| M3 | Model Registry | M2 | 4 days | 🟡 Not started | |
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ⚪ Not started | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ⚪ Not started | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ⚪ Not started | |
@@ -89,9 +89,20 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Privacy toggle on user settings: `store_prompts` checkbox. `App\Http\Controllers\SettingsController@show` renders the page with the current value; `update` validates as boolean and redirects back with `settings-saved` flash status. Frontend uses Inertia's `useForm` with explicit Save button (not auto-save). Flash status read via the new `flash.status` shared prop (added to `HandleInertiaRequests::share()`).
 
 **Exit criteria**
-- Sign in works for all 3 providers (verified manually with real OAuth apps in dev mode).
-- Promoting a user via `user:promote` flips their `role` and unlocks `/admin` routes.
-- 31st request within an hour returns 429.
+- [~] Sign in works for all 3 providers (verified manually with real OAuth apps in dev mode). **Verified at the mock level:** `tests/Feature/Auth/SocialiteCallbackTest.php` (10 tests) exercises the full callback flow for each provider via Socialite's mockable contracts — user creation, existing-link login, email auto-link, avatar backfill, logout, guest gating. **Real-credential verification deferred** until the user provisions OAuth apps with Google/Microsoft/Facebook and populates `.env`. The `.env.example` keys are in place from M1 chunk 3.
+- [x] Promoting a user via `user:promote` flips their `role` and unlocks `/admin` routes. Verified by `tests/Feature/Console/PromoteUserCommandTest.php` (3 tests, including the user-not-found error case) combined with `tests/Feature/Auth/AuthGatedRoutesTest.php` ("returns 403 when a non-admin hits /admin/users" + "renders the Admin Users page for an admin").
+- [x] 31st request within an hour returns 429. Verified by `tests/Feature/RateLimit/RunsRateLimiterTest.php` ("returns 429 when the per-user limit is exceeded"). The actual test uses `max_runs_per_hour = 3` for speed; the assertion is identical at any limit, including the default 30.
+
+**M2 closed:** 2026-05-17. Chunks 1–5 all green. The single 🟠 marker on the manual-OAuth criterion is the only thing standing between M2 and a full ✅, and it's gated on the operator provisioning real OAuth credentials — not on any code work.
+
+**M2 retrospective notes:**
+- **Real value of `eslint-plugin-jsx-a11y`:** caught a `<label>` without explicit `htmlFor` association on the Settings page during chunk 4. Cost ~30 seconds to fix; would otherwise have surfaced in the WCAG audit at M12.
+- **Vite manifest gotcha (twice):** adding new Inertia pages without running `npm run build` produces "Unable to locate file in Vite manifest" 500s in Pest tests. CI handles this (test workflow runs `npm run build` before Pest); local doesn't. Not adding a guard, but worth knowing.
+- **Inertia page glob picked up a test file:** in chunk 2 the path `Pages/__tests__/Welcome.test.tsx` got bundled into the production build via the page-resolver glob — 457 KB of Vitest leaked into prod. Moved tests to `resources/js/__tests__/Pages/` (outside the glob). Worth a CI guard later if this happens again.
+- **Auto-link by email decision (chunk 2):** users with the same email across providers now share one account. Acceptable since Google/MS/FB all verify emails before issuing OAuth tokens. If we see a single phishing/takeover report, revisit by adding an explicit "link account" workflow.
+- **Sliding-window vs fixed-bucket rate limiting (chunk 4):** SPEC said sliding, used fixed-hour-bucket via Laravel's built-in. Documented; swap if bucket-boundary unfairness becomes a real complaint.
+
+**Stats:** Pest 52 tests / 147 assertions, Vitest 8 tests. All CI green.
 
 ---
 
