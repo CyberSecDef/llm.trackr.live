@@ -50,6 +50,7 @@
     },
     "dependencies": {
         "@inertiajs/react": "^2.3.23",
+        "@sentry/react": "^10.53.1",
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
         "ziggy-js": "^2.6.2"
