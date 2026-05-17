@@ -75,8 +75,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** Users can sign in via Google/Microsoft/Facebook. Admin can promote users. Rate limits enforce.
 
 **Tasks**
-- [ ] Migration: `users` (per SPEC §6, no `password` column, including `max_runs_per_hour`, `store_prompts`, `avatar_url`, `role`).
-- [ ] Migration: `social_accounts`.
+- [x] Migration: `users` (per SPEC §6, no `password` column, including `max_runs_per_hour`, `store_prompts`, `avatar_url`, `role`). Edited the Laravel-default migration (greenfield, no audit-trail concerns yet). `password_reset_tokens` table dropped from the migration (not needed under social-only auth). PHP 8.1 enum `App\Enums\UserRole` with `User` + `Admin` cases; Eloquent casts the `role` column to it. `User` model gains `socialAccounts()` HasMany + `isAdmin()` helper. `UserFactory` updated with `admin()` and `privacyOpted()` states.
+- [x] Migration: `social_accounts` with `(provider, provider_user_id)` unique constraint, `(user_id, provider)` index, and `cascadeOnDelete` from users. `SocialAccount` model + `SocialAccountFactory` with `google()` / `microsoft()` / `facebook()` states.
 - [ ] Install Laravel Sanctum.
 - [ ] Install Laravel Socialite + `socialiteproviders/microsoft`.
 - [ ] Implement OAuth flow for Google, Microsoft, Facebook with callback handler.
