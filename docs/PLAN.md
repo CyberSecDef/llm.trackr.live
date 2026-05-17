@@ -16,6 +16,7 @@
 - [`phase2.md`](phase2.md) — Optional Python sidecar for tensor-accurate visualization of open-weights models.
 - [`phase3.md`](phase3.md) — Multi-user collaboration and enhanced sharing.
 - [`phase4.md`](phase4.md) — Educational mode and cross-model comparison.
+- [`parked-decisions.md`](parked-decisions.md) — Architectural choices explicitly deferred to later milestones, with revisit triggers.
 
 Anything in this file that contradicts `SPEC.md` is wrong — fix it here, not there. `SPEC.md` is the source of truth for *what we are building*; `PLAN.md` is the source of truth for *how and when*.
 

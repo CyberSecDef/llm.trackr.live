@@ -300,7 +300,7 @@ On completion:
 | **Security** | API keys encrypted with Laravel encryptor (AES-256-CBC). Input sanitization. CSRF on all state-changing routes. Rate limiting per user + per IP. HTTPS only (HSTS). No prompt storage if user opts out (run record stores `prompt_hash` only). |
 | **Accessibility** | WCAG 2.1 AA compliance. Keyboard navigation for all viz controls. ARIA labels on canvases. Reduced-motion alternative for users with `prefers-reduced-motion`. |
 | **Browser support** | Chrome / Firefox / Edge latest two versions; Safari latest. WebGL 2.0 required for Three.js features (fallback message for unsupported browsers). |
-| **Deployment** | Laravel 11, PHP 8.3+, Composer, SQLite. Shared hosting via Git push + Artisan; VPS via Laravel Forge-style scripts. No MySQL required. No Python required. |
+| **Deployment** | Laravel 13, PHP 8.3+, Composer, SQLite. Shared hosting via Git push + Artisan; VPS via Laravel Forge-style scripts. No MySQL required. No Python required. |
 | **Maintainability** | MVC structure, Eloquent models, service classes per vendor, dependency injection, PHPUnit + Pest tests, ≥ 70% coverage target on backend. |
 | **Extensibility** | Model registry JSON import endpoint. Vendor client interface — adding a new vendor = implement `LlmClientInterface`. |
 | **Observability** | Laravel Telescope (local), structured logs (JSON), error reporting via Sentry or Flare. |
@@ -312,7 +312,7 @@ On completion:
 
 | Layer | Technology |
 |---|---|
-| Backend | Laravel 11 (PHP 8.3+) |
+| Backend | Laravel 13 (PHP 8.3+) |
 | Frontend | Inertia.js + React 18 |
 | Build | Vite |
 | Styling | Tailwind CSS 3 |

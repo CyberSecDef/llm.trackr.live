@@ -38,17 +38,17 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** Empty repo → working Laravel + React + Vite dev environment with CI and linters.
 
 **Tasks**
-- [ ] `composer create-project laravel/laravel:^11` in repo root.
-- [ ] Install Inertia.js Laravel adapter + React preset.
-- [ ] Install Tailwind CSS 3 + configure `tailwind.config.js`.
+- [x] `composer create-project laravel/laravel` in repo root (Laravel 13.9.0, upgraded from initial Laravel 11 scaffold).
+- [x] Switch DB driver to SQLite; create `database/database.sqlite` (SQLite is the default in Laravel 13; DB file is gitignored per-environment).
+- [x] Add `.editorconfig`, `.gitignore` (Laravel + Node), `.gitattributes` (Laravel 13 defaults + project-specific extensions for SQLite/Sentry/OS files).
+- [ ] Install Inertia.js Laravel adapter + React preset (TypeScript).
+- [ ] Install Tailwind CSS 3 + configure `tailwind.config.js` (already present from skeleton; needs Inertia-aware content paths).
 - [ ] Configure Vite for React + Inertia.
-- [ ] Switch DB driver to SQLite; create `database/database.sqlite`.
-- [ ] Set up Laravel Pint config.
+- [ ] Set up Laravel Pint config (currently relies on Pint defaults; will pin a config file).
 - [ ] Set up ESLint + Prettier for JS/TS.
 - [ ] Install Husky + lint-staged for pre-commit hooks.
 - [ ] Install Pest for PHP testing.
-- [ ] Add `.editorconfig`, `.gitignore` (Laravel + Node), `.gitattributes`.
-- [ ] Create `.env.example` with all required env vars (empty values).
+- [ ] Extend `.env.example` with project-specific keys (Socialite providers, Sentry DSN, Soketi config, OpenRouter, etc. — empty values).
 - [ ] GitHub Actions workflow: `lint.yml` (Pint, ESLint, Prettier) + `test.yml` (Pest + React Testing Library).
 - [ ] Install Sentry Laravel SDK + frontend SDK (DSNs read from `.env`, no-op if blank).
 - [ ] Verify `npm run dev` and `php artisan serve` both work and Inertia round-trips between PHP and React.
