@@ -9,10 +9,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'LLM-Viz';
 createInertiaApp({
     title: (title) => (title ? `${title} — ${appName}` : appName),
     resolve: (name) =>
-        resolvePageComponent(
-            `./Pages/${name}.tsx`,
-            import.meta.glob('./Pages/**/*.tsx'),
-        ),
+        resolvePageComponent(`./Pages/${name}.tsx`, import.meta.glob('./Pages/**/*.tsx')),
     setup({ el, App, props }) {
         createRoot(el).render(<App {...props} />);
     },

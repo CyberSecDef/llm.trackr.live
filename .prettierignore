@@ -1,0 +1,22 @@
+# Composer / npm
+vendor/
+node_modules/
+composer.lock
+package-lock.json
+
+# Build artifacts
+public/build/
+storage/
+
+# Laravel-managed caches
+bootstrap/cache/
+
+# License (canonical FSF text, leave untouched)
+LICENSE
+
+# Lockfiles managed by tools
+.husky/_/
+
+# Markdown docs are hand-formatted — Prettier's table alignment creates
+# unhelpful diff noise on every edit. Code formatting still applies.
+*.md

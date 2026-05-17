@@ -313,7 +313,7 @@ On completion:
 | Layer | Technology |
 |---|---|
 | Backend | Laravel 13 (PHP 8.3+) |
-| Frontend | Inertia.js + React 18 |
+| Frontend | Inertia.js + React 19 + TypeScript |
 | Build | Vite |
 | Styling | Tailwind CSS 3 |
 | 3D | Three.js r168 |

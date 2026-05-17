@@ -25,7 +25,7 @@ It is designed for **researchers, educators, developers, and enthusiasts** who w
 | Layer | Tech |
 |---|---|
 | Backend | Laravel 13, PHP 8.3+, SQLite |
-| Frontend | Inertia.js + React 18, Vite, Tailwind CSS 3 |
+| Frontend | Inertia.js + React 19 + TypeScript, Vite, Tailwind CSS 3 |
 | Visualization | Three.js (3D layer stack, token flow), D3.js (heatmaps, logits, MoE routing) |
 | Realtime | Soketi (self-hosted, Pusher-protocol-compatible) |
 | Auth | Laravel Sanctum + Socialite (Google / Microsoft / Facebook social login only) |

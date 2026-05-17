@@ -11,9 +11,7 @@ export default function Welcome({ laravelVersion, phpVersion }: WelcomeProps) {
             <Head title="Welcome" />
             <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
                 <div className="max-w-2xl text-center space-y-6">
-                    <h1 className="text-4xl font-bold tracking-tight">
-                        LLM-Viz
-                    </h1>
+                    <h1 className="text-4xl font-bold tracking-tight">LLM-Viz</h1>
                     <p className="text-slate-400">
                         Interactive, real-time visualization of LLM inference internals.
                     </p>

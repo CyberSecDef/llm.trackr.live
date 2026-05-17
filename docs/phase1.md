@@ -44,11 +44,11 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Install Inertia.js Laravel adapter (`inertiajs/inertia-laravel` ^3.1) + React preset (TypeScript): React 19, `@inertiajs/react` ^2, TypeScript, `@types/react`/`@types/react-dom`/`@types/node`, `@vitejs/plugin-react` ^5 (pinned to v5 for Vite 6 compat). Ziggy installed too (`tightenco/ziggy` ^2.6 + `ziggy-js`) for Laravel-named-routes-in-JS.
 - [x] Install Tailwind CSS 3 + configure `tailwind.config.js` (Tailwind 3.4 already shipped in the skeleton; content paths updated to include `.{ts,tsx}` files).
 - [x] Configure Vite for React + Inertia. `vite.config.js` → `vite.config.ts`; `react()` plugin added; input updated to `resources/js/app.tsx`; `@/*` alias added pointing to `resources/js/`.
-- [ ] Set up Laravel Pint config (currently relies on Pint defaults; will pin a config file).
-- [ ] Set up ESLint + Prettier for JS/TS.
-- [ ] Install Husky + lint-staged for pre-commit hooks.
-- [ ] Install Pest for PHP testing.
-- [ ] Extend `.env.example` with project-specific keys (Socialite providers, Sentry DSN, Soketi config, OpenRouter, etc. — empty values).
+- [x] Set up Laravel Pint config: `pint.json` with `laravel` preset + `concat_space`, `ordered_imports`, `no_unused_imports`, `global_namespace_import`. All existing files auto-formatted to match.
+- [x] Set up ESLint + Prettier for JS/TS. ESLint 9 flat config (`eslint.config.js`) with `typescript-eslint` recommended + `eslint-plugin-react` + `eslint-plugin-react-hooks` + `eslint-plugin-jsx-a11y` (a11y rules support WCAG goals) + `eslint-config-prettier` to disable conflicting style rules. Prettier config in `.prettierrc.json` (4-space, single-quote, trailing commas, 100-col; YAML overridden to 2-space). Markdown files added to `.prettierignore` to avoid table-alignment churn on edits.
+- [x] Install Husky + lint-staged for pre-commit hooks. `.husky/pre-commit` runs `npx lint-staged` (Pint on PHP, ESLint+Prettier on TS/JS/CSS/JSON/YAML/HTML) followed by `npm run type-check` (TS errors caught at commit time, not just CI).
+- [x] Install Pest for PHP testing (Pest 4.7, replacing the default PHPUnit ExampleTests). New `tests/Pest.php` base config + `tests/Feature/WelcomePageTest.php` covering Inertia round-trip. PHPUnit downgraded to 12.5.24 for Pest compat. `pest-plugin-laravel` skipped — its Laravel 13 support hasn't shipped and most of its features are absorbed into Pest core anyway.
+- [x] Extend `.env.example` with project-specific keys (Socialite Google/MS/FB, Pusher-protocol broadcast, OpenRouter, Sentry DSN, GIF renderer, repo URL for AGPL §13, default rate limit). All values blank or sensible defaults; production overrides happen in `.env`.
 - [ ] GitHub Actions workflow: `lint.yml` (Pint, ESLint, Prettier) + `test.yml` (Pest + React Testing Library).
 - [ ] Install Sentry Laravel SDK + frontend SDK (DSNs read from `.env`, no-op if blank).
 - [x] Verify `npm run dev` and `php artisan serve` both work and Inertia round-trips between PHP and React. **Verified end-to-end:** `npm run build` produces a clean bundle; `php artisan serve` + `curl /` returns HTTP 200 with the Inertia `data-page` attribute embedded, `component: "Welcome"`, page props serialized (Laravel 13.9.0, PHP 8.4.21), and Ziggy route data injected.
