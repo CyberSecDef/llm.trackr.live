@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Admin\UsersController as AdminUsersController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -57,13 +59,13 @@ Route::middleware('auth')->group(function () {
         'milestone' => 'M4',
     ]))->name('api-keys.index');
 
-    Route::get('settings', fn () => Inertia::render('Settings'))
-        ->name('settings');
+    Route::get('settings', [SettingsController::class, 'show'])->name('settings');
+    Route::patch('settings', [SettingsController::class, 'update'])->name('settings.update');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
-        Route::get('users', fn () => Inertia::render('Admin/Users'))
-            ->name('users.index');
+        Route::get('users', [AdminUsersController::class, 'index'])->name('users.index');
+        Route::patch('users/{user}', [AdminUsersController::class, 'update'])->name('users.update');
     });
 
     Route::post('logout', [SocialiteController::class, 'logout'])
