@@ -1,0 +1,65 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pest + Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, mbstring, openssl, ctype, fileinfo, tokenizer
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Bootstrap Laravel environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          mkdir -p database
+          touch database/database.sqlite
+          php artisan migrate --force
+
+      - name: Build frontend assets
+        # Pest tests render the Inertia welcome page which uses @vite() —
+        # that resolves against public/build/manifest.json, so we need
+        # a real build before backend tests run.
+        run: npm run build
+
+      - name: Pest (PHP)
+        run: vendor/bin/pest
+
+      - name: Vitest (JS/TS)
+        run: npm run test:run

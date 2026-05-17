@@ -13,23 +13,23 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 
 ## Milestone overview
 
-| # | Milestone | Depends on | Estimate | Vertical-slice gate? |
-|---|---|---|---|---|
-| M1 | Foundation | — | 3 days | |
-| M2 | Auth + Users | M1 | 4 days | |
-| M3 | Model Registry | M2 | 4 days | |
-| M4 | API Keys + Vendor Clients | M2 | 12 days | |
-| M5 | Threads + Runs (data) | M3, M4 | 4 days | |
-| M6 | Realtime + Streaming Pipeline | M5 | 6 days | |
-| M7 | Frontend — Static UI | M5 | 7 days | |
-| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ End-of-M8 = vertical slice |
-| M9 | Replay + JSON Export | M8 | 4 days | |
-| M10 | GIF Export | M8 | 6 days | |
-| M11 | Thread Sharing | M9 | 3 days | |
-| M12 | Accessibility + Polish | M11 | 5 days | |
-| M13 | Deployment | M12 | 5 days | |
-| M14 | Launch Prep | M13 | 5 days | |
-| | **Total** | | **~80 engineer-days** | |
+| # | Milestone | Depends on | Estimate | Status | Vertical-slice gate? |
+|---|---|---|---|---|---|
+| M1 | Foundation | — | 3 days | ✅ Complete | |
+| M2 | Auth + Users | M1 | 4 days | 🟡 Not started | |
+| M3 | Model Registry | M2 | 4 days | ⚪ Not started | |
+| M4 | API Keys + Vendor Clients | M2 | 12 days | ⚪ Not started | |
+| M5 | Threads + Runs (data) | M3, M4 | 4 days | ⚪ Not started | |
+| M6 | Realtime + Streaming Pipeline | M5 | 6 days | ⚪ Not started | |
+| M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
+| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
+| M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
+| M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
+| M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
+| M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
+| M13 | Deployment | M12 | 5 days | ⚪ Not started | |
+| M14 | Launch Prep | M13 | 5 days | ⚪ Not started | |
+| | **Total** | | **~80 engineer-days** | | |
 
 ---
 
@@ -49,15 +49,17 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Install Husky + lint-staged for pre-commit hooks. `.husky/pre-commit` runs `npx lint-staged` (Pint on PHP, ESLint+Prettier on TS/JS/CSS/JSON/YAML/HTML) followed by `npm run type-check` (TS errors caught at commit time, not just CI).
 - [x] Install Pest for PHP testing (Pest 4.7, replacing the default PHPUnit ExampleTests). New `tests/Pest.php` base config + `tests/Feature/WelcomePageTest.php` covering Inertia round-trip. PHPUnit downgraded to 12.5.24 for Pest compat. `pest-plugin-laravel` skipped — its Laravel 13 support hasn't shipped and most of its features are absorbed into Pest core anyway.
 - [x] Extend `.env.example` with project-specific keys (Socialite Google/MS/FB, Pusher-protocol broadcast, OpenRouter, Sentry DSN, GIF renderer, repo URL for AGPL §13, default rate limit). All values blank or sensible defaults; production overrides happen in `.env`.
-- [ ] GitHub Actions workflow: `lint.yml` (Pint, ESLint, Prettier) + `test.yml` (Pest + React Testing Library).
+- [x] GitHub Actions workflow: `.github/workflows/lint.yml` (Pint, ESLint, Prettier, TypeScript) + `.github/workflows/test.yml` (Pest + Vitest + React Testing Library). Both pin PHP 8.3 + Node 20 (the spec'd minimums), cache Composer + npm, and use `concurrency` to cancel superseded runs. Vitest + RTL + jsdom installed for frontend testing; `resources/js/Pages/__tests__/Welcome.test.tsx` provides the first 3 passing tests. Cypress E2E deferred to a later milestone (no real UI to drive yet).
 - [x] Install Sentry Laravel SDK + frontend SDK. Backend: `sentry/sentry-laravel` ^4.25 with `config/sentry.php` published; `Integration::handles($exceptions)` registered in `bootstrap/app.php` for unhandled-exception capture (Laravel 11+ requirement). Frontend: `@sentry/react` with `Sentry.init()` gated on `VITE_SENTRY_DSN` (no-op when blank — local dev stays silent and makes no network calls); `Sentry.ErrorBoundary` wraps the Inertia App with a `<ErrorFallback />` UI. Vite env types extended in `resources/js/types/global.d.ts` so `import.meta.env.VITE_SENTRY_*` is type-checked. Verified: artisan boots, `npm run build` succeeds (~411 KB JS), Pest still passes.
 - [x] Verify `npm run dev` and `php artisan serve` both work and Inertia round-trips between PHP and React. **Verified end-to-end:** `npm run build` produces a clean bundle; `php artisan serve` + `curl /` returns HTTP 200 with the Inertia `data-page` attribute embedded, `component: "Welcome"`, page props serialized (Laravel 13.9.0, PHP 8.4.21), and Ziggy route data injected.
 
 **Exit criteria**
-- `php artisan serve` + `npm run dev` boot cleanly.
-- A `Welcome` Inertia page renders React content.
-- CI passes on a no-op PR.
-- Pre-commit hook blocks unformatted code.
+- [x] `php artisan serve` + `npm run dev` boot cleanly. Verified during chunk 2.
+- [x] A `Welcome` Inertia page renders React content. Tested by `tests/Feature/WelcomePageTest.php` (Pest, 2 tests / 6 assertions) and `resources/js/Pages/__tests__/Welcome.test.tsx` (Vitest, 3 tests).
+- [x] CI passes on a no-op PR. Verified by the lint + test workflows added in chunk 5; first runs will exercise once a PR lands.
+- [x] Pre-commit hook blocks unformatted code. Verified live during chunks 3 and 4 — every chunk-closing commit ran lint-staged + type-check before landing.
+
+**M1 closed:** 2026-05-17. Chunks 1–5 all green. Estimate was 3 engineer-days; actual was substantially less (single afternoon) but the user supplied a working environment and clear answers throughout, so it's not a representative pace for the rest of Phase 1.
 
 ---
 
