@@ -16,6 +16,7 @@ vi.mock('@inertiajs/react', async (importOriginal) => {
         usePage: () => ({
             props: {
                 auth: { user: null },
+                errors: {},
                 ziggy: { location: 'http://localhost' },
             },
             url: '/',

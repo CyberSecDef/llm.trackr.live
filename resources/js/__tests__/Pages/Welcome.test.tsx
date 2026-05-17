@@ -14,7 +14,14 @@ describe('<Welcome />', () => {
         expect(screen.getByText('PHP 8.4.21')).toBeInTheDocument();
     });
 
-    it('links to the repository', () => {
+    it('links to the sign-in page', () => {
+        render(<Welcome laravelVersion="13.9.0" phpVersion="8.4.21" />);
+        const link = screen.getByRole('link', { name: /sign in/i });
+        // Our test setup stubs route() to /_test/{name}
+        expect(link).toHaveAttribute('href', '/_test/login');
+    });
+
+    it('links to the project repository', () => {
         render(<Welcome laravelVersion="13.9.0" phpVersion="8.4.21" />);
         const link = screen.getByRole('link', { name: /the repository/i });
         expect(link).toHaveAttribute('href', 'https://github.com/CyberSecDef/llm.trackr.live');

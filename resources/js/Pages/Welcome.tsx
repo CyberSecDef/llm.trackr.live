@@ -1,5 +1,4 @@
-import { Head, Link, usePage } from '@inertiajs/react';
-import type { PageProps } from '@/types';
+import { Head, Link } from '@inertiajs/react';
 
 interface WelcomeProps {
     laravelVersion: string;
@@ -7,8 +6,6 @@ interface WelcomeProps {
 }
 
 export default function Welcome({ laravelVersion, phpVersion }: WelcomeProps) {
-    const { auth } = usePage<PageProps>().props;
-
     return (
         <>
             <Head title="Welcome" />
@@ -19,46 +16,12 @@ export default function Welcome({ laravelVersion, phpVersion }: WelcomeProps) {
                         Interactive, real-time visualization of LLM inference internals.
                     </p>
 
-                    {auth.user ? (
-                        <div className="space-y-3">
-                            <p className="text-sm text-slate-400">
-                                Signed in as{' '}
-                                <span className="text-slate-200">
-                                    {auth.user.name ?? auth.user.email}
-                                </span>
-                            </p>
-                            <Link
-                                href={route('dashboard')}
-                                className="inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm"
-                            >
-                                Go to dashboard →
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <p className="text-sm text-slate-400">Sign in to continue</p>
-                            <div className="flex flex-wrap justify-center gap-2">
-                                <a
-                                    href={route('auth.redirect', { provider: 'google' })}
-                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
-                                >
-                                    Google
-                                </a>
-                                <a
-                                    href={route('auth.redirect', { provider: 'microsoft' })}
-                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
-                                >
-                                    Microsoft
-                                </a>
-                                <a
-                                    href={route('auth.redirect', { provider: 'facebook' })}
-                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
-                                >
-                                    Facebook
-                                </a>
-                            </div>
-                        </div>
-                    )}
+                    <Link
+                        href={route('login')}
+                        className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    >
+                        Sign in →
+                    </Link>
 
                     <p className="text-sm text-slate-500">
                         See{' '}

@@ -2,24 +2,29 @@
 
 use App\Http\Controllers\Auth\SocialiteController;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Public landing. Signed-in users skip straight to the dashboard.
 Route::get('/', function () {
+    if (Auth::check()) {
+        return redirect()->route('dashboard');
+    }
+
     return Inertia::render('Welcome', [
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
     ]);
 })->name('home');
 
-// Placeholder login route. Chunk 3 of M2 will replace this with a
-// dedicated Login Inertia page. For now, the Welcome page already
-// shows the three provider buttons, so we just rerender Welcome.
+// Sign-in page. Signed-in users skip straight to the dashboard.
 Route::get('login', function () {
-    return Inertia::render('Welcome', [
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
+    if (Auth::check()) {
+        return redirect()->route('dashboard');
+    }
+
+    return Inertia::render('Login');
 })->name('login');
 
 // Social authentication (Google / Microsoft / Facebook).
@@ -30,11 +35,37 @@ Route::prefix('auth')->group(function () {
         ->name('auth.callback');
 });
 
-Route::post('logout', [SocialiteController::class, 'logout'])
-    ->middleware('auth')
-    ->name('logout');
+// Authenticated app.
+Route::middleware('auth')->group(function () {
+    Route::get('dashboard', fn () => Inertia::render('Dashboard'))
+        ->name('dashboard');
 
-// Placeholder dashboard. Chunk 3 of M2 builds the real UI.
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware('auth')->name('dashboard');
+    // Placeholder pages — full IA visible from day one, each routes to a
+    // ComingSoon view that calls out the milestone where the feature lands.
+    Route::get('threads', fn () => Inertia::render('ComingSoon', [
+        'feature' => 'Threads',
+        'milestone' => 'M5',
+    ]))->name('threads.index');
+
+    Route::get('models', fn () => Inertia::render('ComingSoon', [
+        'feature' => 'Models',
+        'milestone' => 'M3',
+    ]))->name('models.index');
+
+    Route::get('api-keys', fn () => Inertia::render('ComingSoon', [
+        'feature' => 'API Keys',
+        'milestone' => 'M4',
+    ]))->name('api-keys.index');
+
+    Route::get('settings', fn () => Inertia::render('Settings'))
+        ->name('settings');
+
+    // Admin-only routes.
+    Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('users', fn () => Inertia::render('Admin/Users'))
+            ->name('users.index');
+    });
+
+    Route::post('logout', [SocialiteController::class, 'logout'])
+        ->name('logout');
+});

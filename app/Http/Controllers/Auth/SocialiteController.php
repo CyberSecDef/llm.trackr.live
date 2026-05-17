@@ -31,7 +31,7 @@ class SocialiteController extends Controller
         try {
             $socialiteUser = Socialite::driver($provider)->user();
         } catch (Throwable $e) {
-            return redirect()->route('home')->withErrors([
+            return redirect()->route('login')->withErrors([
                 'social' => "Sign-in via {$provider} failed. Please try again.",
             ]);
         }
