@@ -266,6 +266,7 @@ On completion:
 ### 3.5 Threads (Persistent Multi-Turn Conversations)
 - A **thread** is an ordered collection of runs sharing a common system prompt and (typically) the same model.
 - Users land on a thread list. "New Thread" creates an empty thread; each subsequent prompt within it is a new `run` appended to the thread.
+- **Auto-titling:** a new thread's title is set to the first 60 characters of the first prompt (trimmed at word boundary, with `…` if truncated). No LLM call. Title is editable on the thread settings page.
 - Each new run within a thread:
   - Inherits the thread's system prompt.
   - Pre-prepends all prior `(user, assistant)` turns from completed runs in the thread as conversation history sent to the vendor API.
@@ -573,9 +574,9 @@ All simulated values (synthetic logprobs, attention heatmaps, MoE routing probab
 3. Worker reads `runs.token_log` and `runs.parameters.model_snapshot`.
 4. Worker invokes the configured renderer to produce a frame sequence (one frame per token-tick or one frame per N ms depending on configured speed):
    - **Default — SVG/2D renderer (`GIF_RENDERER=svg`):** PHP iterates the token log; for each frame, generates an SVG containing the 2D panels (token stream, attention heatmap, top-10 logits bar, MoE routing bars). Imagick rasterizes each SVG to PNG. **No 3D layer-stack in this mode** — a footer "2D summary view" label is included so users know they're not getting the full 3D capture.
-   - **Optional — Puppeteer renderer (`GIF_RENDERER=puppeteer`):** Headless Chromium loads `/render/{run_id}?autoplay=1&record=1`, runs the live React+Three.js viz with deterministic seeding, and captures `canvas.toDataURL()` per frame. Adds ~150MB Chromium dependency + a Node sidecar under supervisor. Recommended for deployments that prioritize export fidelity over footprint.
-5. Worker shells out to `ffmpeg` to assemble frames into an animated GIF (or MP4 if user prefers).
-6. Result stored in `storage/app/exports/{run_id}.gif`, download link surfaced via WebSocket completion event.
+   - **Optional — Puppeteer renderer (`GIF_RENDERER=puppeteer`):** Headless Chromium loads `/render/{run_id}?autoplay=1&record=1`, runs the live React+Three.js viz with deterministic seeding, and captures `canvas.toDataURL()` per frame. **Spawn-per-export lifecycle** — a Node child process is launched at job start, runs Chromium, captures frames, then exits. Cold-start ~3 s per export; idle RAM cost is zero between jobs. Adds ~150 MB Chromium dependency at install time. Recommended for deployments that prioritize export fidelity over footprint.
+5. Worker shells out to `ffmpeg` **twice from the same frame sequence** — once for animated GIF, once for MP4 (H.264). Both are always produced; storage cost is small relative to rendering cost.
+6. Results stored at `storage/app/exports/{run_id}.gif` and `storage/app/exports/{run_id}.mp4`. Both download URLs surfaced via the WebSocket completion event so the user picks.
 7. Renderer mode is checked at boot; if `puppeteer` is configured but Chromium is missing, the system logs a warning and falls back to SVG with a "fallback engaged" badge on the resulting export.
 
 ### 10.7 Failure Modes
@@ -606,13 +607,14 @@ All simulated values (synthetic logprobs, attention heatmaps, MoE routing probab
 - ~~Thread sharing~~ → **In Phase 1, opt-in per thread**, read-only public view at `/share/{token}`.
 - ~~Pricing fail-safe staleness banner~~ → **Show after 14 days** without successful OpenRouter refresh.
 
-### 11.2 Still open
-*(All major architectural questions resolved. Remaining decisions are tactical and can be made during implementation.)*
+### 11.2 Resolved tactical decisions (2026-05-17)
+- ~~Default viz speed~~ → **1× on load**, controls toolbar exposes 0.5× / 1× / 2× / 4×. Per-user preference saved to localStorage.
+- ~~Puppeteer lifecycle~~ → **Spawn per export.** Cold-start ~3 s per export; releases all RAM between jobs. Better fit for a memory-constrained VPS. Only relevant if `GIF_RENDERER=puppeteer` is set.
+- ~~Export formats~~ → **Both animated GIF and MP4 produced from a single frame sequence.** ffmpeg does both in one job; the user downloads whichever they prefer.
+- ~~Thread auto-titling~~ → **First 60 characters of the first prompt.** No LLM call. Title is editable on the thread settings page. Phase 2+ may add an optional "auto-title via LLM" button.
 
-- Default visualization speed (1×? 2×?) and which controls live in the toolbar vs settings.
-- Whether the Puppeteer sidecar runs continuously or is spawned per-export (cold-start vs idle-RAM tradeoff).
-- Export format: GIF is mandatory per spec, but offering MP4/WebM in parallel is trivial once ffmpeg is in place — confirm whether to expose both.
-- Thread auto-titling: should we use a cheap LLM call (e.g., Groq Llama-3-8B) to generate titles from first prompts, or use the first 60 chars of the first prompt as a fallback-only?
+### 11.3 Still open
+*(None at present.)*
 
 ---
 

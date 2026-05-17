@@ -116,8 +116,10 @@ php artisan user:promote you@example.com
 
 ## Contributing
 
-Not currently accepting external contributions — the project is in pre-implementation planning. This will change after the v1.0 launch; see `CONTRIBUTING.md` (to be written).
+The project is in pre-implementation planning; external code contributions aren't being accepted yet. Issues, design feedback, and discussion are welcome via GitHub Issues. A `CONTRIBUTING.md` will appear before the M1 scaffold lands.
 
 ## License
 
-TBD before public push. See [`docs/PLAN.md`](docs/PLAN.md) §10 for the open question.
+Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See [`LICENSE`](LICENSE) for the full text.
+
+The AGPL is a strong copyleft license: if you run a modified version of LLM-Viz as a network service, you must make your modifications available to users of that service under the same license. This is intentional — it lets others self-host or fork while preventing closed-source SaaS clones.

@@ -126,7 +126,7 @@ These apply across all phases.
 | `README.md` | Public-facing project intro + quick start. | Phase 0 ✅ |
 | `docs/architecture.md` | Diagrams, sequence flows, deeper than SPEC. | M6 |
 | `docs/api.md` | Internal HTTP/WS API reference. | M9 |
-| `docs/deployment.md` | DreamHost VPS provisioning + supervisor configs. | M13 |
+| `docs/deployment.md` | DreamHost VPS provisioning, prod + staging on a single VPS, supervisor configs, Let's-Encrypt direct (no Cloudflare). | M13 |
 | `docs/user-guide.md` | End-user docs (how to use the app). | M14 |
 | `docs/admin-guide.md` | Admin tasks: registry refresh, user promotion, rate limits. | M14 |
 | `CHANGELOG.md` | Per-release notes. | Starting at M14 / v1.0 |
@@ -143,10 +143,14 @@ No fixed release date is committed in Phase 0. A target date will be set at the 
 
 ---
 
-## 10. Open planning questions (not architectural — see SPEC §11.2 for those)
+## 10. Open planning questions
 
-1. **License.** MIT? Apache 2.0? Source-available with a non-commercial clause? Affects whether external contributions are welcome.
-2. **CI minutes budget.** GitHub Actions free tier is 2,000 minutes/month for private repos. Public repo = unlimited. Is the repo staying private until launch?
-3. **Staging environment.** Same VPS as production with a `staging.` subdomain, or a separate cheaper VPS? Cost vs. fidelity tradeoff.
-4. **Pre-launch beta.** Invite-only beta before public launch, or straight to public? Affects whether we need an invitation/waitlist system.
-5. **Domain DNS / Cloudflare.** Cloudflare in front of DreamHost VPS for caching + DDoS protection, or direct? Cloudflare's WebSocket support is fine but adds a moving part.
+### 10.1 Resolved (2026-05-17)
+- ~~License~~ → **AGPL-3.0.** Strong copyleft. Anyone running a modified version as a service must publish their changes. `LICENSE` file added at the repo root (canonical FSF text).
+- ~~Repo visibility~~ → **Public from day one.** GitHub Actions minutes are unlimited on public repos; work happens in the open.
+- ~~Staging environment~~ → **`staging.llm.trackr.live` subdomain on the production VPS.** Shared resources; acceptable for launch-scale traffic.
+- ~~Pre-launch beta~~ → **Straight to public at v1.0.** No invitation/waitlist system needed. M14 includes a "soft" launch checklist but no gating UI.
+- ~~CDN / DDoS~~ → **No Cloudflare; direct to VPS.** SSL via Let's Encrypt directly on DreamHost VPS. Simplest path; revisit if traffic warrants it.
+
+### 10.2 Still open
+*(All planning-level questions resolved. Anything that comes up will be added back here.)*

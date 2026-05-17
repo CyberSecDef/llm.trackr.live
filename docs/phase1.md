@@ -287,19 +287,20 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
   - Imagick rasterizes to PNG sequence.
   - "2D summary view" label baked into the SVG footer.
 - [ ] **Puppeteer renderer** (opt-in `GIF_RENDERER=puppeteer`):
-  - Node sidecar script: launches headless Chromium, navigates to `/runs/{id}/render?record=1`, captures canvas frames.
-  - Supervisor config to run the sidecar.
+  - Spawn-per-export Node child process: launches at job start, runs headless Chromium, navigates to `/runs/{id}/render?record=1`, captures canvas frames, exits.
+  - No supervisor entry — process lifetime equals job lifetime. Cold-start ~3 s; zero idle RAM cost.
   - `/runs/{id}/render` route on Laravel side: loads run, autoplays viz in record mode (deterministic, no live streaming).
-- [ ] ffmpeg shell-out: PNG sequence → animated GIF (and MP4 in parallel).
+- [ ] ffmpeg shell-out: PNG sequence → animated GIF **and** MP4 (H.264). Both formats always produced from the same frame sequence.
 - [ ] Per-export timeout: 5 minutes.
-- [ ] Result stored at `storage/app/exports/{run_id}.gif` (+ `.mp4`).
-- [ ] WebSocket completion event surfaces download URLs.
+- [ ] Results stored at `storage/app/exports/{run_id}.gif` and `storage/app/exports/{run_id}.mp4`.
+- [ ] WebSocket completion event surfaces both download URLs; download UI offers a chooser.
 - [ ] Renderer fallback: if `puppeteer` configured but Chromium unavailable at boot, log warning and fall back to SVG with a "fallback engaged" badge.
 
 **Exit criteria**
-- Default install (SVG renderer) produces a GIF for a 100-token run in < 30 seconds.
-- Optional Puppeteer install produces a 3D-accurate GIF.
+- Default install (SVG renderer) produces both GIF and MP4 for a 100-token run in < 30 seconds.
+- Optional Puppeteer install produces a 3D-accurate GIF + MP4.
 - Fallback path verified by intentionally removing Chromium.
+- MP4 plays in Chrome, Firefox, Safari; GIF renders inline in Slack and Discord.
 
 ---
 
@@ -355,52 +356,66 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** Application deploys to DreamHost VPS reliably and is observable.
 
 **Tasks**
-- [ ] Provision DreamHost VPS (or document an existing one).
+- [ ] Provision a single DreamHost VPS that hosts **both** production and staging.
 - [ ] Install: PHP 8.3, Composer, Node 20, SQLite, supervisor, nginx, certbot, ffmpeg.
 - [ ] (Optional) install Chromium if `GIF_RENDERER=puppeteer`.
-- [ ] nginx vhost config: `llm.trackr.live` + `staging.llm.trackr.live`.
-- [ ] HTTPS via Let's Encrypt + HSTS header.
-- [ ] supervisor configs:
-  - Queue worker (`php artisan queue:work`).
-  - Soketi.
-  - (Optional) Puppeteer sidecar.
-- [ ] Deploy script: `./deploy.sh` — `git pull`, `composer install --no-dev`, `npm ci && npm run build`, `php artisan migrate --force`, `php artisan optimize`, `supervisorctl restart all`.
-- [ ] GitHub Actions deploy workflow: on push to `main` → SSH to staging and run `deploy.sh`. On `v*` tag → SSH to production.
-- [ ] SQLite backup cron: nightly `.dump` to off-VPS storage (e.g., S3 or Backblaze).
-- [ ] Sentry DSN configured in production `.env`.
+- [ ] nginx vhost config: two server blocks on the same VPS.
+  - `llm.trackr.live` — production. Document root: `/var/www/llm-viz/current/public`.
+  - `staging.llm.trackr.live` — staging. Document root: `/var/www/llm-viz-staging/current/public`.
+  - Both proxy WebSocket upgrades to local Soketi on their own ports (e.g., 6001 prod, 6002 staging).
+- [ ] HTTPS via Let's Encrypt **direct to the VPS** (no Cloudflare in front). HSTS header enabled. Auto-renewal via certbot's systemd timer.
+- [ ] supervisor configs (with separate program names for prod and staging so they can be restarted independently):
+  - `llm-viz-queue` / `llm-viz-staging-queue` — queue workers.
+  - `llm-viz-soketi` / `llm-viz-staging-soketi` — WebSocket servers on different ports.
+  - (Optional) Puppeteer is spawn-per-export — no supervisor entry needed.
+- [ ] Two isolated SQLite databases (`/var/www/llm-viz/database/database.sqlite` and likewise for staging) so staging data can't pollute production.
+- [ ] Deploy script: `./deploy.sh {env}` — `git pull`, `composer install --no-dev`, `npm ci && npm run build`, `php artisan migrate --force`, `php artisan optimize`, `supervisorctl restart llm-viz-{env}-*`.
+- [ ] GitHub Actions deploy workflow: on push to `main` → SSH and run `./deploy.sh staging`. On `v*` tag → run `./deploy.sh production`.
+- [ ] SQLite backup cron: nightly `.dump` of **production only** to off-VPS storage (e.g., S3 or Backblaze).
+- [ ] Sentry DSN configured in both production and staging `.env` with distinct `SENTRY_ENVIRONMENT` values.
 - [ ] Smoke test from production deploy: sign in, submit a run, watch viz. Document the procedure in `docs/deployment.md`.
+- [ ] Resource guardrails documented: at expected launch traffic the VPS handles prod + staging concurrently, but a load spike on staging could affect prod (shared CPU/RAM). Note in `docs/deployment.md` to throttle staging during load tests.
 
 **Exit criteria**
-- A push to `main` deploys to staging within 5 minutes.
-- A `v0.9.0` tag deploys to production.
-- Sentry receives a deliberately-thrown test error from production.
-- Backup verified by restoring `database.sqlite` from latest backup into a scratch directory.
+- A push to `main` deploys to `staging.llm.trackr.live` within 5 minutes.
+- A `v0.9.0` tag deploys to `llm.trackr.live`.
+- Both domains return 200 over HTTPS, certificates valid, HSTS header present.
+- Sentry receives a deliberately-thrown test error from production with `environment=production`.
+- Backup verified by restoring production `database.sqlite` from latest backup into a scratch directory.
+- Restarting staging supervisor processes does not interrupt production WebSocket connections.
 
 ---
 
 ## M14 — Launch Prep
 
-**Purpose:** Run the full acceptance criteria checklist, fix anything that fails, write user-facing documentation, and seed the database for first users.
+**Purpose:** Run the full acceptance criteria checklist, fix anything that fails, write user-facing documentation, and seed the database for first users. **No invite-only beta** — launch goes straight to public access at v1.0.
 
 **Tasks**
 - [ ] Acceptance criteria walkthrough (all 18 items from SPEC §9), each ticked off with evidence (screenshot/recording/test name).
-- [ ] Performance: load-test with k6 or Artillery → 100 concurrent simulated users hitting the streaming pipeline.
+- [ ] Performance: load-test with k6 or Artillery → 100 concurrent simulated users hitting the streaming pipeline. Run from staging to avoid blowing up production during the test.
 - [ ] Security audit:
   - Verify API keys are encrypted at rest (look at raw SQLite).
   - Test share-token enumeration (60/min IP rate limit holds).
   - CSRF on all state-changing routes.
   - Composer + npm audit clean.
+  - AGPL compliance review: ensure every page footer and the API responses include a link to the source repository (AGPL §13 — interaction-with-source obligation).
 - [ ] User guide (`docs/user-guide.md`): screenshots, walkthroughs.
 - [ ] Admin guide (`docs/admin-guide.md`): registry refresh, user promotion, rate limit adjustment, backup restore.
 - [ ] `CHANGELOG.md` initialized with `v1.0.0` entry.
 - [ ] Registry seeded with the launch set (9+ models per SPEC §7).
 - [ ] Promote one real admin user via `user:promote`.
-- [ ] Tag `v1.0.0` and deploy.
-- [ ] Announce.
+- [ ] **Soft-launch checklist** (since public from day one, no waitlist):
+  - Verify rate-limit defaults (30/hour) are reasonable for first-day curiosity traffic.
+  - Confirm Sentry alerts route to a real notification channel (email or Slack webhook).
+  - Pre-write a "we hit a snag" status page or pinned issue template.
+  - Have an admin promotion ready in case an early user needs higher limits.
+- [ ] Tag `v1.0.0` and deploy to production.
+- [ ] Announce (forum/social/HN, at the operator's discretion).
 
 **Exit criteria**
 - All 18 SPEC §9 criteria pass.
 - `llm.trackr.live` is live, returning 200, and a fresh user can complete a sign-in → run → replay loop end-to-end.
+- AGPL §13 source-link is visible on every page served to a user.
 
 ---
 
