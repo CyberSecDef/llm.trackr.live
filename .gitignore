@@ -1,0 +1,34 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/auth.json
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+
+# Local SQLite databases — each environment has its own
+/database/database.sqlite
+/database/database.sqlite-journal
+
+# Sentry build artifacts (source-map upload tokens, etc.)
+.sentryclirc
+
+# OS noise
+.DS_Store
+Thumbs.db
