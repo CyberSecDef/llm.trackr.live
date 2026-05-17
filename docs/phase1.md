@@ -41,9 +41,9 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] `composer create-project laravel/laravel` in repo root (Laravel 13.9.0, upgraded from initial Laravel 11 scaffold).
 - [x] Switch DB driver to SQLite; create `database/database.sqlite` (SQLite is the default in Laravel 13; DB file is gitignored per-environment).
 - [x] Add `.editorconfig`, `.gitignore` (Laravel + Node), `.gitattributes` (Laravel 13 defaults + project-specific extensions for SQLite/Sentry/OS files).
-- [ ] Install Inertia.js Laravel adapter + React preset (TypeScript).
-- [ ] Install Tailwind CSS 3 + configure `tailwind.config.js` (already present from skeleton; needs Inertia-aware content paths).
-- [ ] Configure Vite for React + Inertia.
+- [x] Install Inertia.js Laravel adapter (`inertiajs/inertia-laravel` ^3.1) + React preset (TypeScript): React 19, `@inertiajs/react` ^2, TypeScript, `@types/react`/`@types/react-dom`/`@types/node`, `@vitejs/plugin-react` ^5 (pinned to v5 for Vite 6 compat). Ziggy installed too (`tightenco/ziggy` ^2.6 + `ziggy-js`) for Laravel-named-routes-in-JS.
+- [x] Install Tailwind CSS 3 + configure `tailwind.config.js` (Tailwind 3.4 already shipped in the skeleton; content paths updated to include `.{ts,tsx}` files).
+- [x] Configure Vite for React + Inertia. `vite.config.js` → `vite.config.ts`; `react()` plugin added; input updated to `resources/js/app.tsx`; `@/*` alias added pointing to `resources/js/`.
 - [ ] Set up Laravel Pint config (currently relies on Pint defaults; will pin a config file).
 - [ ] Set up ESLint + Prettier for JS/TS.
 - [ ] Install Husky + lint-staged for pre-commit hooks.
@@ -51,7 +51,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [ ] Extend `.env.example` with project-specific keys (Socialite providers, Sentry DSN, Soketi config, OpenRouter, etc. — empty values).
 - [ ] GitHub Actions workflow: `lint.yml` (Pint, ESLint, Prettier) + `test.yml` (Pest + React Testing Library).
 - [ ] Install Sentry Laravel SDK + frontend SDK (DSNs read from `.env`, no-op if blank).
-- [ ] Verify `npm run dev` and `php artisan serve` both work and Inertia round-trips between PHP and React.
+- [x] Verify `npm run dev` and `php artisan serve` both work and Inertia round-trips between PHP and React. **Verified end-to-end:** `npm run build` produces a clean bundle; `php artisan serve` + `curl /` returns HTTP 200 with the Inertia `data-page` attribute embedded, `component: "Welcome"`, page props serialized (Laravel 13.9.0, PHP 8.4.21), and Ziggy route data injected.
 
 **Exit criteria**
 - `php artisan serve` + `npm run dev` boot cleanly.
