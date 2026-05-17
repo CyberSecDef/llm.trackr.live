@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import Welcome from '../Welcome';
+import Welcome from '@/Pages/Welcome';
 
 describe('<Welcome />', () => {
     it('renders the app name', () => {

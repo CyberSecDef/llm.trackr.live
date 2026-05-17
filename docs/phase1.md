@@ -77,10 +77,10 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Tasks**
 - [x] Migration: `users` (per SPEC §6, no `password` column, including `max_runs_per_hour`, `store_prompts`, `avatar_url`, `role`). Edited the Laravel-default migration (greenfield, no audit-trail concerns yet). `password_reset_tokens` table dropped from the migration (not needed under social-only auth). PHP 8.1 enum `App\Enums\UserRole` with `User` + `Admin` cases; Eloquent casts the `role` column to it. `User` model gains `socialAccounts()` HasMany + `isAdmin()` helper. `UserFactory` updated with `admin()` and `privacyOpted()` states.
 - [x] Migration: `social_accounts` with `(provider, provider_user_id)` unique constraint, `(user_id, provider)` index, and `cascadeOnDelete` from users. `SocialAccount` model + `SocialAccountFactory` with `google()` / `microsoft()` / `facebook()` states.
-- [ ] Install Laravel Sanctum.
-- [ ] Install Laravel Socialite + `socialiteproviders/microsoft`.
-- [ ] Implement OAuth flow for Google, Microsoft, Facebook with callback handler.
-- [ ] On callback: upsert user by provider+provider_user_id, log them in via Sanctum, redirect to dashboard.
+- [x] Install Laravel Sanctum (`laravel/sanctum` ^4.3). Config published, `personal_access_tokens` migration applied. Not used in Phase 1 — kept in place for future API-token use cases per SPEC.
+- [x] Install Laravel Socialite (^5.27) + `socialiteproviders/microsoft` (^4.9). Microsoft provider registered via `Event::listen(SocialiteWasCalled::class, MicrosoftExtendSocialite::handle)` in `AppServiceProvider::boot()`. Google + Facebook ship in Socialite core. `config/services.php` extended with all three providers (env-driven; blank vars = provider button shown but redirect would fail with clear error).
+- [x] Implement OAuth flow for Google, Microsoft, Facebook with callback handler. `App\Http\Controllers\Auth\SocialiteController` exposes `redirect()` / `callback()` / `logout()`. Routes: `GET /auth/{provider}/redirect`, `GET /auth/{provider}/callback`, `POST /logout`. Provider allowlist (`['google', 'microsoft', 'facebook']`) gates both endpoints with 404 on unknown providers.
+- [x] On callback: upsert user by provider+provider_user_id, log them in via session auth, redirect to dashboard. **Email auto-link behavior (decided 2026-05-17):** if no matching `social_accounts` row but the OAuth email matches an existing user, attach a new `social_accounts` row to that user instead of creating a duplicate account. `email_verified_at` set to `now()` on first creation (providers verify emails before issuing OAuth tokens). Avatar backfill: if the existing user has no `avatar_url` and the new provider supplies one, save it; never overwrite an existing avatar.
 - [ ] Login page (Inertia React): three large provider buttons.
 - [ ] Logout endpoint + UI.
 - [ ] Artisan command: `php artisan user:promote {email}` — fails clearly if email not found.
