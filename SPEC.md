@@ -39,7 +39,7 @@ prompt → tokenizer → embeddings → transformer layers
 Synchronized to the actual token stream where the vendor API supports streaming; otherwise metadata-driven animation paced to wall-clock generation time.
 
 ### 1.5 Hard Constraints
-- **Hosting:** DreamHost VPS — PHP 8.3+, SQLite, persistent processes allowed (queue workers, WebSocket server, ffmpeg shell-out), no GPU.
+- **Hosting:** DreamHost VPS — PHP 8.4+, SQLite, persistent processes allowed (queue workers, WebSocket server, ffmpeg shell-out), no GPU.
 - **Backend language:** PHP only. No Python, no FastAPI, no vLLM, no Ollama, no local model execution.
 - **Inference:** Performed exclusively via external vendor REST APIs (BYOK only — see §3.4).
 - **Internals shown:** Metadata-driven animations. Phase 1 does *not* expose raw tensors, attention weights, QKV matrices, or expert routing data from proprietary vendors (none of them expose these via API). Animations are illustrative, paced to the real token stream.
@@ -300,7 +300,7 @@ On completion:
 | **Security** | API keys encrypted with Laravel encryptor (AES-256-CBC). Input sanitization. CSRF on all state-changing routes. Rate limiting per user + per IP. HTTPS only (HSTS). No prompt storage if user opts out (run record stores `prompt_hash` only). |
 | **Accessibility** | WCAG 2.1 AA compliance. Keyboard navigation for all viz controls. ARIA labels on canvases. Reduced-motion alternative for users with `prefers-reduced-motion`. |
 | **Browser support** | Chrome / Firefox / Edge latest two versions; Safari latest. WebGL 2.0 required for Three.js features (fallback message for unsupported browsers). |
-| **Deployment** | Laravel 13, PHP 8.3+, Composer, SQLite. Shared hosting via Git push + Artisan; VPS via Laravel Forge-style scripts. No MySQL required. No Python required. |
+| **Deployment** | Laravel 13, PHP 8.4+, Composer, SQLite. Shared hosting via Git push + Artisan; VPS via Laravel Forge-style scripts. No MySQL required. No Python required. |
 | **Maintainability** | MVC structure, Eloquent models, service classes per vendor, dependency injection, PHPUnit + Pest tests, ≥ 70% coverage target on backend. |
 | **Extensibility** | Model registry JSON import endpoint. Vendor client interface — adding a new vendor = implement `LlmClientInterface`. |
 | **Observability** | Laravel Telescope (local), structured logs (JSON), error reporting via Sentry or Flare. |
@@ -312,7 +312,7 @@ On completion:
 
 | Layer | Technology |
 |---|---|
-| Backend | Laravel 13 (PHP 8.3+) |
+| Backend | Laravel 13 (PHP 8.4+) |
 | Frontend | Inertia.js + React 19 + TypeScript |
 | Build | Vite |
 | Styling | Tailwind CSS 3 |

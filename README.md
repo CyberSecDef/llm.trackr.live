@@ -24,7 +24,7 @@ It is designed for **researchers, educators, developers, and enthusiasts** who w
 
 | Layer | Tech |
 |---|---|
-| Backend | Laravel 13, PHP 8.3+, SQLite |
+| Backend | Laravel 13, PHP 8.4+, SQLite |
 | Frontend | Inertia.js + React 19 + TypeScript, Vite, Tailwind CSS 3 |
 | Visualization | Three.js (3D layer stack, token flow), D3.js (heatmaps, logits, MoE routing) |
 | Realtime | Soketi (self-hosted, Pusher-protocol-compatible) |
@@ -55,7 +55,7 @@ Full details in [`SPEC.md`](SPEC.md).
 > The project is not scaffolded yet. The commands below describe the intended workflow once Milestone M1 of Phase 1 completes.
 
 ### Prerequisites
-- PHP 8.3+
+- PHP 8.4+
 - Composer 2.x
 - Node 20+
 - SQLite 3
