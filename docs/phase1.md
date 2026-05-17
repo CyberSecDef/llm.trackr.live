@@ -61,6 +61,13 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 
 **M1 closed:** 2026-05-17. Chunks 1–5 all green. Estimate was 3 engineer-days; actual was substantially less (single afternoon) but the user supplied a working environment and clear answers throughout, so it's not a representative pace for the rest of Phase 1.
 
+**Things that needed follow-up patches after the initial chunk-5 push:**
+- CI PHP version: spec said PHP 8.3+ but Laravel 13 ships with Symfony 8.x which actually requires PHP ^8.4. CI bumped to 8.4 and the spec corrected (`SPEC.md`, `README.md` updated). Local dev was already on 8.4 so no functional change.
+- `tests/Unit/` lost from git when we deleted the only file in chunk 3 (git doesn't track empty dirs). Added a `.gitkeep` so the directory survives fresh checkouts; phpunit.xml still references both Unit and Feature testsuites.
+
+**Known follow-ups not blocking M1:**
+- GitHub Actions Node 20 deprecation: `actions/checkout@v4`, `actions/setup-node@v4`, `actions/cache@v4` all use Node 20, which GitHub flips to Node 24 default on 2026-06-02 and removes on 2026-09-16. Bump to v5 of each action when they're available (not yet at time of M1 close).
+
 ---
 
 ## M2 — Auth + Users
