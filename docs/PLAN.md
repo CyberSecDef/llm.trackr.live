@@ -27,7 +27,7 @@ Anything in this file that contradicts `SPEC.md` is wrong — fix it here, not t
 | Phase | Goal | Status | Depends on | Detailed doc |
 |---|---|---|---|---|
 | **Phase 0** | Project planning + spec freeze | ✅ Complete | — | This file + `SPEC.md` |
-| **Phase 1** | Launch product: 9 vendors, threads, viz, replay, export, sharing | 🟡 In progress (M2/14 complete) | Phase 0 | [`phase1.md`](phase1.md) |
+| **Phase 1** | Launch product: 9 vendors, threads, viz, replay, export, sharing | 🟡 In progress (M3/14 complete) | Phase 0 | [`phase1.md`](phase1.md) |
 | **Phase 2** | Python sidecar service for real tensor capture on open-weights models | ⚪ Future | Phase 1 launched + traction | [`phase2.md`](phase2.md) |
 | **Phase 3** | Multi-user collaboration, real-time co-viewing, organization accounts | ⚪ Future | Phase 1 launched + user demand | [`phase3.md`](phase3.md) |
 | **Phase 4** | Educational mode (guided tours, lessons) and comparison mode (run N models side-by-side) | ⚪ Future | Phase 1 launched | [`phase4.md`](phase4.md) |

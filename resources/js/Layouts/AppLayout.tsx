@@ -1,6 +1,7 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
 import type { PageProps } from '@/types';
 import UserAvatar from '@/Components/UserAvatar';
+import RegistryStalenessBanner from '@/Components/RegistryStalenessBanner';
 import type { ReactNode } from 'react';
 
 interface NavItem {
@@ -100,7 +101,10 @@ export default function AppLayout({ children }: Props) {
                     </form>
                 </div>
             </aside>
-            <main className="flex-1 overflow-auto">{children}</main>
+            <main className="flex-1 overflow-auto">
+                <RegistryStalenessBanner />
+                {children}
+            </main>
         </div>
     );
 }

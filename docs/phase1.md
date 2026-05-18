@@ -17,8 +17,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 |---|---|---|---|---|---|
 | M1 | Foundation | — | 3 days | ✅ Complete | |
 | M2 | Auth + Users | M1 | 4 days | ✅ Complete | |
-| M3 | Model Registry | M2 | 4 days | 🟡 Not started | |
-| M4 | API Keys + Vendor Clients | M2 | 12 days | ⚪ Not started | |
+| M3 | Model Registry | M2 | 4 days | ✅ Complete | |
+| M4 | API Keys + Vendor Clients | M2 | 12 days | 🟡 Not started | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ⚪ Not started | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ⚪ Not started | |
 | M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
@@ -120,12 +120,23 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Scheduled task (Laravel scheduler): weekly, with admin-email notification on failure. Registered in `routes/console.php` (Laravel 11+ pattern, replacing the old Kernel::schedule). Runs `weeklyOn(1, '03:00')` — Monday 03:00 UTC, intentionally off-peak. `->onFailure(...)` callback queries `User::where('role', UserRole::Admin)` and sends `App\Notifications\RegistryRefreshFailed` to all admins via the `mail` channel. With `MAIL_MAILER=log` in dev, failure notifications appear in `storage/logs/laravel.log` rather than emailing anyone.
 - [x] Seeder for initial registry: `Database\Seeders\ModelRegistrySeeder` calls `RefreshService` on `php artisan migrate --seed`. Resilient: catches network failures with a clear warning rather than aborting the seed. Short-circuits in the `testing` env so Http::fake() controls test fixtures without the seeder interfering. Wired into `DatabaseSeeder::run()`.
 - [x] Admin UI: model CRUD with `manual_override` toggle. `App\Http\Controllers\Admin\ModelsController` provides `index` / `edit` / `update` / `destroy` / `refresh`. Index has search (name + display_name), vendor filter, architecture filter, paginated at 25, with badge indicators for `manual_override` and `metadata_estimated`. Edit form covers all admin-editable fields grouped into Identity / Architecture / Capacity+pricing / Capabilities / Chat template / Refresh control sections (skipping `supported_params` JSON — too low-frequency to merit a UI for now). Validation: vendor required, architecture_type/position_encoding constrained to enum values, numeric ranges enforced on layers/hidden_dim/heads/MoE/context/pricing. Refresh button posts to `admin.models.refresh` which invokes `RefreshService::refresh()` and surfaces success summary or `errors.refresh` flash. Delete is a hard delete — M5's `runs.model_id` foreign key will need an ON DELETE strategy when that lands. The placeholder `/models` route now redirects authenticated admins to `/admin/models` and keeps a `ComingSoon → M7` placeholder for non-admins (public model browser is an M7 deliverable). Sidebar split into `Admin · Users` and `Admin · Models`, both admin-only.
-- [ ] Staleness banner component (model-selector page): visible if `last_successful_refresh_at` > 14 days ago.
+- [x] Staleness banner component: visible to all authed users when `last_successful_refresh_at > 14 days ago` (or never). Threshold (14 days) is a public constant `HandleInertiaRequests::STALENESS_THRESHOLD_DAYS` per SPEC §7.1. Shared with every Inertia page via a `registry` prop (`is_stale`, `days_stale`, `last_refresh_at`). Banner lives in `resources/js/Components/RegistryStalenessBanner.tsx` and renders inside `AppLayout` just above the page content — only when stale. Admins see "View registry" + "Refresh now" actions; non-admins see "Ask an admin to run the registry refresh". The SPEC said "model-selector page"; we put it in the layout so the warning is visible on every authed page since the registry feeds cost estimates app-wide. When M7 ships the public model selector, it can either rely on the layout banner or add a more prominent variant.
 
 **Exit criteria**
-- `php artisan registry:refresh` populates ≥ 50 models with vendor, pricing, context length.
-- The launch-set 9+ models have full architecture metadata.
-- Editing a model and setting `manual_override = true` survives the next refresh.
+- [~] `php artisan registry:refresh` populates ≥ 50 models with vendor, pricing, context length. **Verified at the mock level:** `RefreshServiceTest` exercises the full create/update/skip cycle against `Http::fake()` responses. **Real ≥ 50-model count deferred** until first production run hits the live OpenRouter API (the upstream typically returns 100+ models). The fixture, refresh service, and command are otherwise complete and tested.
+- [x] The launch-set 9+ models have full architecture metadata. `database/seeders/data/architecture_metadata.php` contains all 10 SPEC §7 launch-set entries. `ArchitectureMetadataFixtureTest` verifies presence + correctness of `metadata_estimated` flags + Mixtral 8x22B MoE structure.
+- [x] Editing a model and setting `manual_override = true` survives the next refresh. Verified by `RefreshServiceTest::it skips rows with manual_override = true` — pre-existing row with `manual_override = true` and stale context_length is untouched after the refresh runs. The admin UI's Edit form (chunk 4) is the path admins use to set this flag.
+
+**M3 closed:** 2026-05-17. Chunks 1–5 all green.
+
+**M3 retrospective notes:**
+- **The `RegistryMeta::setValue` Eloquent dirty-checking gotcha (chunk 1):** `updateOrCreate` skips DB writes when no attribute is dirty, so repeated identical refreshes wouldn't bump `updated_at`. Switched to Query Builder's `updateOrInsert`. This is the kind of subtlety that would have shipped silently and only surfaced months later when "last refresh" data stopped moving.
+- **`Pages/__tests__/` glob leak revisited (chunk 4):** moved 3 new test files (Admin/Models test, registry tests) outside `resources/js/Pages/` to keep the M2 chunk-2 lesson holding. Worth adding a CI check that fails the build if any `.test.tsx` file appears inside `Pages/`.
+- **`expectsOutputToContain` consumes substring (chunk 3):** Laravel 13's PendingCommand consumes the matched substring from the captured buffer, so chained assertions on overlapping content silently fail. Switch to a single longer substring or split into separate tests.
+- **`$this->seed(SeederClass)` wires a mocked OutputStyle (chunk 3):** that doesn't expect SymfonyStyle's internal `askQuestion()` calls from `$this->command->info()`. Workaround: invoke the seeder directly via `app(SeederClass)->run()`. The `?->` null-safe operator skips the command-bound output.
+- **Staleness banner in AppLayout, not just model-selector (chunk 5):** SPEC said model selector (M7 territory). We put it layout-level since registry data feeds cost estimates everywhere. When M7 lands, can re-evaluate placement.
+
+**Stats:** Pest 121 tests / 329 assertions, Vitest 8 tests. All CI green.
 
 ---
 
