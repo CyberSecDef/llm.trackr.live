@@ -111,8 +111,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** Models table populated from OpenRouter weekly, with architecture metadata enriched from a local fixture. Admin can edit and override.
 
 **Tasks**
-- [ ] Migration: `models` per SPEC §6.
-- [ ] Migration: `registry_meta` (key/value; tracks `last_successful_refresh_at`).
+- [x] Migration: `models` per SPEC §6 — plus `manual_override` (refresh-skip flag) and `metadata_estimated` (best-guess marker for closed-source layer counts). Architecture metadata columns (`architecture_type`, `layers`, `hidden_dim`, `attention_heads`, `moe_experts`, `moe_active_experts`, `position_encoding`) are all nullable since OpenRouter doesn't expose them — they're populated by the fixture or admin edits in chunks 2 and 4. PHP 8.1 enums `App\Enums\ArchitectureType` and `App\Enums\PositionEncoding` provide strong typing; Eloquent casts both columns. Eloquent model named `App\Models\LlmModel` (with explicit `$table = 'models'`) to avoid shadowing `Illuminate\Database\Eloquent\Model`. Factory + states (`moe()`, `vendor()`, `estimated()`, `manuallyOverridden()`).
+- [x] Migration: `registry_meta` (key/value; tracks `last_successful_refresh_at`). String-primary-key key/value table with JSON value column and `updated_at` only (no created_at — meta entries are upserted, not "created"). `App\Models\RegistryMeta` exposes `getValue($key)`, `setValue($key, $value)`, and `forget($key)` static helpers. `setValue` uses the Query Builder's `updateOrInsert` rather than Eloquent's `updateOrCreate` so identical-value writes still bump `updated_at` (otherwise the dirty-checking in `save()` would skip the write and break "last refresh time" tracking).
 - [ ] `OpenRouterClient` (Guzzle): `fetchModels(): array`.
 - [ ] Fixture file: `database/seeders/data/architecture_metadata.php` — keyed by model name, contains layers / hidden_dim / heads / MoE structure / position_encoding for the launch set.
 - [ ] Service: `ModelRegistryRefreshService` — joins OpenRouter + fixture, upserts, respects `manual_override`.
