@@ -54,4 +54,12 @@ return [
         'redirect' => env('FACEBOOK_REDIRECT_URI'),
     ],
 
+    'openrouter' => [
+        // Upstream source for the model registry (M3 RefreshService).
+        // No API key needed for /models, but may be added later if we
+        // start hitting authenticated endpoints.
+        'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
+        'api_key' => env('OPENROUTER_API_KEY'),
+    ],
+
 ];
