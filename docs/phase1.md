@@ -225,8 +225,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [ ] Install Laravel Echo + `pusher-js` on frontend.
 - [ ] Channel: `private-runs.{run_id}`, with auth via Sanctum.
 - [ ] Job: `StreamRunJob` — pulls run, picks vendor client, iterates `stream()`, broadcasts events.
-- [ ] Events: `RunStarted`, `TokenReceived`, `RunCompleted`, `RunErrored`.
-- [ ] State machine: PHP-side derives `layer_advance` and `moe_route` events from token index + model metadata, seeded by `run.id` for determinism.
+- [x] Events: `RunStarted` (chunk 1), `TokenReceived`, `LayerAdvanced`, `MoeRouted`, `RunCompleted`, `RunErrored`. All in `App\Events\Runs\`, all implement `ShouldBroadcast` on `private-runs.{run_id}`. Each `broadcastWith()` returns a JSON-safe payload (scalars + arrays only) so the frontend doesn't need to know about Eloquent shapes. `MoeRouted` is the only one that's vendor-conditional (emitted only for `architecture_type='moe'` model snapshots).
+- [x] State machine: `App\Services\Runs\RunEventEmitter` translates each `LlmTokenChunk` into a deterministic event sequence: `TokenReceived` + `LayerAdvanced`, plus `MoeRouted` for MoE models. MoE expert selection is a function of `(run.id, token_index)` only, via a SHA-256-based stateless PRNG — replays produce identical animations per SPEC §10.1. Scores are synthetic descending probabilities renormalized to ~1.0 (no proprietary MoE vendor exposes real router logits, so this is illustrative-only). Also exposes `completedEvent()` (computes tokens-per-second from duration) and `erroredEvent()` for the StreamRunJob (chunk 3) to call once at terminal status.
 - [ ] SSE fallback route: `GET /runs/{id}/stream` — `Symfony\StreamedResponse` proxying the vendor stream chunk-by-chunk. Used when client cannot establish WebSocket.
 - [ ] Frontend hook: `useRunStream(runId)` — subscribes to channel and yields events; falls back to SSE on WebSocket failure.
 - [ ] Debug page `/runs/{id}/debug`: dumps event stream as JSON in a `<pre>` block. Internal use only.
