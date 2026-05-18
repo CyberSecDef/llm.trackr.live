@@ -60,6 +60,16 @@ class OpenAiClient implements LlmClientInterface
         return $org ? ['OpenAI-Organization' => (string) $org] : [];
     }
 
+    /**
+     * Path under the base URL where chat completions live. Subclasses
+     * (HuggingFaceClient in chunk 5) can override when a vendor mounts
+     * the endpoint somewhere else.
+     */
+    protected function endpointPath(string $model): string
+    {
+        return '/chat/completions';
+    }
+
     public function stream(
         ApiKey $apiKey,
         string $model,
@@ -71,7 +81,7 @@ class OpenAiClient implements LlmClientInterface
 
         $response = $this->request($apiKey)
             ->withOptions(['stream' => true])
-            ->post('/chat/completions', $payload);
+            ->post($this->endpointPath($model), $payload);
 
         $this->guardResponse($response);
 
@@ -97,7 +107,7 @@ class OpenAiClient implements LlmClientInterface
     ): LlmCompletion {
         $payload = $this->buildPayload($model, $prompt, $params, $history, stream: false);
 
-        $response = $this->request($apiKey)->post('/chat/completions', $payload);
+        $response = $this->request($apiKey)->post($this->endpointPath($model), $payload);
         $this->guardResponse($response);
 
         $body = $response->json();

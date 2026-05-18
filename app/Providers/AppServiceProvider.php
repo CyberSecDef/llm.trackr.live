@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Services\Llm\Clients\AnthropicClient;
+use App\Services\Llm\Clients\GoogleGeminiClient;
 use App\Services\Llm\Clients\GroqClient;
+use App\Services\Llm\Clients\HuggingFaceClient;
+use App\Services\Llm\Clients\MetaViaTogetherClient;
 use App\Services\Llm\Clients\MistralClient;
 use App\Services\Llm\Clients\OpenAiClient;
 use App\Services\Llm\Clients\TogetherClient;
@@ -41,16 +45,21 @@ class AppServiceProvider extends ServiceProvider
         // Google and Facebook are built into laravel/socialite directly.
         Event::listen(SocialiteWasCalled::class, [MicrosoftExtendSocialite::class, 'handle']);
 
-        // Register concrete vendor clients with the factory.
-        // OpenAI + the 4 OpenAI-compatible cluster vendors land here.
-        // The vendor-specific protocol clients (Anthropic, Google,
-        // HuggingFace, Meta-via-Together wrapper) join in chunk 5.
+        // Register concrete vendor clients with the factory. All 9
+        // vendors land here as of M4 chunk 5: OpenAI + the 4 OpenAI-
+        // compatible (xAI/Mistral/Groq/Together) + the 3 vendor-
+        // specific protocols (Anthropic/Google/HuggingFace) + the
+        // Meta-via-Together wrapper.
         $factory = $this->app->make(LlmClientFactory::class);
         $factory->register($this->app->make(OpenAiClient::class));
         $factory->register($this->app->make(XaiClient::class));
         $factory->register($this->app->make(MistralClient::class));
         $factory->register($this->app->make(GroqClient::class));
         $factory->register($this->app->make(TogetherClient::class));
+        $factory->register($this->app->make(AnthropicClient::class));
+        $factory->register($this->app->make(GoogleGeminiClient::class));
+        $factory->register($this->app->make(HuggingFaceClient::class));
+        $factory->register($this->app->make(MetaViaTogetherClient::class));
 
         // Per-user, per-hour rate limit for run submissions.
         // Reads users.max_runs_per_hour live so admin edits take effect on the

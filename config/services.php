@@ -90,4 +90,19 @@ return [
         'base_url' => env('TOGETHER_BASE_URL', 'https://api.together.xyz/v1'),
     ],
 
+    'anthropic' => [
+        'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com/v1'),
+    ],
+
+    'google_gemini' => [
+        'base_url' => env('GOOGLE_GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+    ],
+
+    'huggingface' => [
+        // No sensible default — HF Inference Endpoints are user-deployed
+        // and the URL is per-deployment. Per-model overrides via the
+        // models.api_base_url column land in M5/M6.
+        'base_url' => env('HUGGINGFACE_BASE_URL', ''),
+    ],
+
 ];
