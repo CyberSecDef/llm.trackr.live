@@ -53,6 +53,18 @@ class User extends Authenticatable
         return $this->hasMany(ApiKey::class);
     }
 
+    /** @return HasMany<Thread, $this> */
+    public function threads(): HasMany
+    {
+        return $this->hasMany(Thread::class);
+    }
+
+    /** @return HasMany<Run, $this> */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(Run::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;

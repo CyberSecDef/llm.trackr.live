@@ -7,6 +7,7 @@ use App\Enums\PositionEncoding;
 use Database\Factories\LlmModelFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Represents a row in the `models` table — a single LLM available
@@ -71,5 +72,11 @@ class LlmModel extends Model
     public function isMoe(): bool
     {
         return $this->architecture_type === ArchitectureType::Moe;
+    }
+
+    /** @return HasMany<Run, $this> */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(Run::class, 'model_id');
     }
 }

@@ -187,9 +187,9 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** The thread/run data model is fully implemented and accessible through Eloquent models, but not yet wired to streaming.
 
 **Tasks**
-- [ ] Migration: `threads` per SPEC §6 (including `share_token`, `share_enabled_at`).
-- [ ] Migration: `runs` per SPEC §6 (including `thread_id`, `sequence_in_thread`).
-- [ ] Eloquent models with relationships (`User → Threads → Runs → Model`).
+- [x] Migration: `threads` per SPEC §6 (including `share_token`, `share_enabled_at`). Schema: user_id (cascade), nullable title (auto-filled to first 60 chars of first prompt at M5 chunk 4), nullable system_prompt, nullable default_model_id with `nullOnDelete` so a removed model doesn't break the thread, default_parameters JSON, archived bool default false, tags JSON, share_token unique (M11 sharing), share_enabled_at, last_activity_at, timestamps. Indexed by user_id / archived / last_activity_at.
+- [x] Migration: `runs` per SPEC §6 (including `thread_id`, `sequence_in_thread`). Schema: thread_id (cascade), denormalized user_id (cascade), model_id with **restrictOnDelete** so admin-deleting a model with runs is blocked (matches M3 chunk 4's design note), sequence_in_thread (unique with thread_id), nullable prompt (privacy opt-out per SPEC §10.4), prompt_hash always required (deterministic replay seed), conversation_history / parameters / token_log all JSON nullable, output_text + numeric timing/cost columns, status (cast to `App\Enums\RunStatus`: Pending / Streaming / Complete / Error with `isTerminal()`), nullable error_message.
+- [x] Eloquent models with relationships (`User → Threads → Runs → Model`). `Thread::runs()` orders by sequence_in_thread by default. `Run::thread()/user()/model()` BelongsTo. `User::threads()` and `User::runs()` HasMany. `LlmModel::runs()` HasMany (with explicit `model_id` FK because `Factory::for()` would otherwise auto-derive a `llmModel()` relation name from the class). `Thread::isShared()` helper; `Run::isTerminal()` delegating to the enum.
 - [ ] `ThreadService`: `create()`, `archive()`, `rename()`, `tag()`, `delete()`.
 - [ ] `RunService::submit($thread, $prompt, $modelId, $params)`:
   - Validates: user owns thread, has key for vendor, params within bounds, context budget not exceeded.
