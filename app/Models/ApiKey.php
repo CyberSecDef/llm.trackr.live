@@ -75,6 +75,13 @@ class ApiKey extends Model
 
     public function touchUsed(): void
     {
+        // No-op for transient (unsaved) instances so the smoke-test
+        // command can build ephemeral keys from env vars without
+        // accidentally inserting orphan rows.
+        if (! $this->exists) {
+            return;
+        }
+
         $this->forceFill(['last_used_at' => now()])->saveQuietly();
     }
 }

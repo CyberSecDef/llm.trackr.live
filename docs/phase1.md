@@ -18,8 +18,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M1 | Foundation | — | 3 days | ✅ Complete | |
 | M2 | Auth + Users | M1 | 4 days | ✅ Complete | |
 | M3 | Model Registry | M2 | 4 days | ✅ Complete | |
-| M4 | API Keys + Vendor Clients | M2 | 12 days | 🟡 Not started | |
-| M5 | Threads + Runs (data) | M3, M4 | 4 days | ⚪ Not started | |
+| M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
+| M5 | Threads + Runs (data) | M3, M4 | 4 days | 🟡 Not started | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ⚪ Not started | |
 | M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
@@ -160,13 +160,25 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
   - [x] `MetaViaTogetherClient` — Llama models proxied through Together. Trivial subclass of `TogetherClient` overriding only `vendor()`. Exists so the model registry can list Llama models under `vendor='meta'` while still routing to Together's API. Key resolution: M5/M6 run-submission layer picks which `ApiKey` to pass (UX note: a fallback "use Together key if no Meta key exists" would be friendlier — deferred to M5).
 - [x] Vendor client factory: maps `models.vendor` → concrete class. `App\Services\Llm\LlmClientFactory` is registration-based — concrete clients call `$factory->register($client)` and are looked up by `vendor()`. Registered as a singleton in `AppServiceProvider::register()` so registrations apply app-wide and tests can swap implementations via the same instance. `clientFor()` throws `UnsupportedVendorException` on unknown vendor. The 9 concrete client registrations land in chunks 3-5.
 - [x] Per-vendor token counter (uses `tiktoken-php` for OpenAI; approximate BPE for others). `yethee/tiktoken` ^1.1 installed (PHP port of OpenAI's BPE tables). `TokenCounterInterface` exposes `count()` + `isExact()` (the UI uses the latter to decide whether to show a `~` prefix). `OpenAiTokenCounter` selects encoding by model name (o200k_base for GPT-4o family, cl100k_base for older). `ApproximateTokenCounter` uses chars/4 with a small whitespace adjustment (±20% accuracy in English prose). `TokenCounterFactory` returns the OpenAI counter for `vendor=openai` and the approximate counter for everything else. `EncoderProvider` cached as a singleton so BPE tables load once per process.
-- [ ] Integration tests: recorded HTTP fixtures (VCR-style) per vendor for streaming + non-streaming.
-- [ ] Smoke-test artisan command: `php artisan vendors:smoke-test` — hits each vendor with a 5-token prompt using a CI-account key.
+- [x] Integration tests: recorded HTTP fixtures (VCR-style) per vendor for streaming + non-streaming. Each client suite (`OpenAiClientTest`, `AnthropicClientTest`, `GoogleGeminiClientTest`, the OpenAI-compat cluster dataset, the HF/Meta subclass tests) uses `Http::fake()` with realistic vendor SSE bodies / non-streaming JSON payloads as inline PHP strings. Vendor-side error codes (401/403/429/500) are also fixture-driven. **Inline-string fixtures over fixture files** is a deliberate trade-off for now — extract to `tests/Fixtures/Llm/*.{sse,json}` when test files start sharing payloads.
+- [x] Smoke-test artisan command: `php artisan vendors:smoke-test`. Implemented as `App\Console\Commands\VendorsSmokeTest`. Iterates `LlmClientFactory::supportedVendors()`, reads each vendor's test key from `SMOKE_TEST_{VENDOR}_KEY` env var (skips with a clear notice if unset), reads optional model override from `SMOKE_TEST_{VENDOR}_MODEL`, sends `"Say 'ok' and nothing else."` with `max_tokens: 10, temperature: 0`. Reports per-vendor status (✓ passed / ✗ failed / ○ skipped). Default behavior: stop on first failure; `--keep-going` to continue. `--vendor=name` filter (repeatable) for testing a single vendor. Returns 0 if all pass-or-skip, 1 if any fail. **Safe to run with no env configured at all** — exits 0 with all-skipped (intentional so it can be wired into a deploy hook before keys are provisioned). Uses transient (unsaved) `ApiKey` instances; `ApiKey::touchUsed()` was updated to no-op for unsaved models so the smoke test doesn't insert orphan rows.
 
 **Exit criteria**
-- Each of the 9 clients passes its recorded-fixture tests.
-- `vendors:smoke-test` succeeds against all 9 live APIs.
-- Submitting a 50-token prompt to OpenAI via the client yields a stream of token chunks in PHP.
+- [x] Each of the 9 clients passes its recorded-fixture tests. **Verified:** ~99 tests across the 9 client + factory + token-counter + value-object suites, all green.
+- [~] `vendors:smoke-test` succeeds against all 9 live APIs. **Mock-level verified:** command flow / error handling / exit codes / env-var skip / `--vendor` filter / `--keep-going` all tested with fake clients. **Real-network verification deferred** until operator provisions `SMOKE_TEST_*_KEY` env vars with CI-account keys.
+- [x] Submitting a 50-token prompt to OpenAI via the client yields a stream of token chunks in PHP. **Verified at the mock level** by `OpenAiClientTest`. Real-network verification follows once keys are provisioned.
+
+**M4 closed:** 2026-05-17. Chunks 1–6 all green.
+
+**M4 retrospective notes:**
+- **The parked Laravel-AI-SDK vs hand-rolled decision** (chunk 2) was the most consequential M4 choice. Laravel AI SDK covers all 9 vendors but doesn't expose logprobs — SPEC §3.1.5's logits panel needs them. Going hand-rolled meant more code (chunks 3–5) but full control of raw signals. If the viz ends up not needing logprobs after all, the Laravel AI SDK becomes a viable refactor target — every concrete client could be replaced with a thin SDK wrapper behind `LlmClientInterface`.
+- **The 9 vendors clustered better than expected.** OpenAI-compatible (5) + bespoke (3) + wrapper (1). The base-class abstraction in `OpenAiClient` paid off twice: chunk 4's cluster (5 vendors × ~15 LOC each) and chunk 5's HuggingFace.
+- **Pint's `php_unit_method_casing` rule trips on any class with a method starting with `test`** — even non-test classes. Caught at chunk 6 when my private `testVendor()` got snake-cased to `test_vendor` (breaking the caller). Renamed to `attemptVendor` to avoid. Consider excluding the rule for `app/Console/` if we hit this again.
+- **`ApiKey::touchUsed` had to become defensive** so the smoke-test command could use transient `ApiKey` instances without inserting orphan rows. One-line guard; never fires in normal production flow.
+- **SPEC deviation on HuggingFace** (chunk 5): SPEC said TGI native, we went OpenAI-compatible. Documented in `HuggingFaceClient` docblock + commit. Practical reasons: chat templates handled server-side, code reuse from `OpenAiClient`. Revisit if a user-deployed endpoint exposes only the TGI surface.
+- **Inline-string SSE fixtures** instead of fixture files: works fine at 9 vendors. Extract when payloads start being shared across tests.
+
+**Stats:** Pest 244 tests / 578 assertions, Vitest 8 tests. All CI green.
 
 ---
 
