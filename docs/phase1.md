@@ -19,8 +19,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M2 | Auth + Users | M1 | 4 days | ✅ Complete | |
 | M3 | Model Registry | M2 | 4 days | ✅ Complete | |
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
-| M5 | Threads + Runs (data) | M3, M4 | 4 days | 🟡 Not started | |
-| M6 | Realtime + Streaming Pipeline | M5 | 6 days | ⚪ Not started | |
+| M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
+| M6 | Realtime + Streaming Pipeline | M5 | 6 days | 🟡 Not started | |
 | M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
@@ -197,9 +197,21 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Tests: thread CRUD, run validation, context overflow rejection, history snapshot correctness. Covered across chunks 1–4: `ThreadModelTest` (11), `RunModelTest` (14), `ThreadServiceTest` (18), `ConversationHistoryBuilderTest` (10), `ContextBudgetCalculatorTest` (10), `RunServiceTest` (22) — 85 M5 tests in total.
 
 **Exit criteria**
-- Threads/runs can be created and queried via Eloquent.
-- `RunService::submit` rejects invalid input with clear errors.
-- Submitting two runs in a thread results in the second run's `conversation_history` containing the first run's user+assistant turns.
+- [x] Threads/runs can be created and queried via Eloquent. Verified by `ThreadModelTest` + `RunModelTest` (25 tests covering persistence, casts, relations, FK behavior).
+- [x] `RunService::submit` rejects invalid input with clear errors. Verified by `RunServiceTest` validation group (10 tests): wrong owner, empty prompt, no key, all four param bounds, context overflow with details — each raising a distinct `RunSubmissionException` subclass.
+- [x] Submitting two runs in a thread results in the second run's `conversation_history` containing the first run's user+assistant turns. Verified by `RunServiceTest::it stores the conversation history snapshot` — creates a completed first run, submits a second, asserts the second run's snapshot is `[{user: first q}, {assistant: first a}]`.
+
+**M5 closed:** 2026-05-18. Chunks 1–5 all green.
+
+**M5 retrospective notes:**
+- **Migration timestamp collision.** `php artisan make:migration` produced both `create_threads_table` and `create_runs_table` with the same timestamp; runs would have run alphabetically first despite its FK to threads. Bumped the runs filename timestamp by 1s. Worth knowing for any future multi-migration commit — generate them seconds apart or rename.
+- **`Factory::for($model)` auto-derives the relation name** from the related model's class name (camelCase). `LlmModel` → `llmModel()`. We define the relation as `model()` for cleaner code, so test setups need `Factory::for($model, 'model')` explicitly.
+- **Pest's `toThrow(string)` does substring matching, not isinstance** when given a string. `toThrow(\Throwable::class)` reads as "the exception message contains the substring 'Throwable'" — never matches real exceptions. Use concrete exception classes (`QueryException::class`, etc.).
+- **Test factories + unique constraints.** Hardcoding `'name' => 'gpt-4o'` in tests clashes with factories made in `beforeEach`. Drop the override; the factory generates unique names; OpenAI token counter falls back to `o200k_base` for unknown names so behavior is identical.
+- **Pint's `lambda_not_used_import` rule** auto-strips unused variables from closure `use()` lists. Useful but can be surprising if you expected a future-use placeholder to stick around — annotate intent in a comment if you really want to keep it.
+- **The Meta-via-Together key fallback** was closed here in RunService (chunk 4), addressing the UX gap noted at M4 chunk 5. When a user submits a `vendor=meta` model and has no `meta` API key but DOES have a `together` key, the service silently uses the Together key. No-op for users who explicitly added a Meta key.
+
+**Stats:** Pest 329 tests / 756 assertions, Vitest 8 tests. All CI green.
 
 ---
 
