@@ -16,7 +16,18 @@ const NAV_ITEMS: NavItem[] = [
     { label: 'Models', href: '/models', routeName: 'models.index' },
     { label: 'API Keys', href: '/api-keys', routeName: 'api-keys.index' },
     { label: 'Settings', href: '/settings', routeName: 'settings' },
-    { label: 'Admin', href: '/admin/users', routeName: 'admin.users.index', adminOnly: true },
+    {
+        label: 'Admin · Users',
+        href: '/admin/users',
+        routeName: 'admin.users.index',
+        adminOnly: true,
+    },
+    {
+        label: 'Admin · Models',
+        href: '/admin/models',
+        routeName: 'admin.models.index',
+        adminOnly: true,
+    },
 ];
 
 interface Props {

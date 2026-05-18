@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\ModelsController as AdminModelsController;
 use App\Http\Controllers\Admin\UsersController as AdminUsersController;
 use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\SettingsController;
@@ -49,10 +50,18 @@ Route::middleware('auth')->group(function () {
         'milestone' => 'M5',
     ]))->name('threads.index');
 
-    Route::get('models', fn () => Inertia::render('ComingSoon', [
-        'feature' => 'Models',
-        'milestone' => 'M3',
-    ]))->name('models.index');
+    // For non-admins this is a placeholder until M7 ships the public
+    // model browser. Admins get sent to the registry admin page.
+    Route::get('models', function () {
+        if (request()->user()?->isAdmin()) {
+            return redirect()->route('admin.models.index');
+        }
+
+        return Inertia::render('ComingSoon', [
+            'feature' => 'Models',
+            'milestone' => 'M7',
+        ]);
+    })->name('models.index');
 
     Route::get('api-keys', fn () => Inertia::render('ComingSoon', [
         'feature' => 'API Keys',
@@ -66,6 +75,12 @@ Route::middleware('auth')->group(function () {
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('users', [AdminUsersController::class, 'index'])->name('users.index');
         Route::patch('users/{user}', [AdminUsersController::class, 'update'])->name('users.update');
+
+        Route::get('models', [AdminModelsController::class, 'index'])->name('models.index');
+        Route::post('models/refresh', [AdminModelsController::class, 'refresh'])->name('models.refresh');
+        Route::get('models/{model}/edit', [AdminModelsController::class, 'edit'])->name('models.edit');
+        Route::patch('models/{model}', [AdminModelsController::class, 'update'])->name('models.update');
+        Route::delete('models/{model}', [AdminModelsController::class, 'destroy'])->name('models.destroy');
     });
 
     Route::post('logout', [SocialiteController::class, 'logout'])
