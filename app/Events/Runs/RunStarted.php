@@ -6,7 +6,7 @@ use App\Models\Run;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -25,7 +25,7 @@ use Illuminate\Queue\SerializesModels;
  * Reverb wiring is functional end-to-end before we build out the
  * rest of the event surface.
  */
-class RunStarted implements ShouldBroadcast
+class RunStarted implements ShouldBroadcastNow
 {
     use Dispatchable;
     use InteractsWithSockets;

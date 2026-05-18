@@ -6,7 +6,7 @@ use App\Models\Run;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -18,7 +18,7 @@ use Illuminate\Queue\SerializesModels;
  * Carries final usage stats so the frontend can update the run-level
  * cost / token-count readouts without an extra HTTP round trip.
  */
-class RunCompleted implements ShouldBroadcast
+class RunCompleted implements ShouldBroadcastNow
 {
     use Dispatchable;
     use InteractsWithSockets;

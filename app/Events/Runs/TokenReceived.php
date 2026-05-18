@@ -6,7 +6,7 @@ use App\Models\Run;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -22,7 +22,7 @@ use Illuminate\Queue\SerializesModels;
  * the shape mirrors OpenAI's: a list of `{token, logprob, top_logprobs}`
  * entries that the logits panel (SPEC §3.1.5) renders directly.
  */
-class TokenReceived implements ShouldBroadcast
+class TokenReceived implements ShouldBroadcastNow
 {
     use Dispatchable;
     use InteractsWithSockets;

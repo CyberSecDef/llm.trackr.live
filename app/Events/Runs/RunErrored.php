@@ -6,7 +6,7 @@ use App\Models\Run;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -23,7 +23,7 @@ use Illuminate\Queue\SerializesModels;
  * it died — the viz can keep showing it as "partial result" rather
  * than wiping the panel.
  */
-class RunErrored implements ShouldBroadcast
+class RunErrored implements ShouldBroadcastNow
 {
     use Dispatchable;
     use InteractsWithSockets;

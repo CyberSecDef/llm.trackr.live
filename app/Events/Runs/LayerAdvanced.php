@@ -6,7 +6,7 @@ use App\Models\Run;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -24,7 +24,7 @@ use Illuminate\Queue\SerializesModels;
  * generation proceeds. This event is the trigger; the cascade timing
  * is animated client-side.
  */
-class LayerAdvanced implements ShouldBroadcast
+class LayerAdvanced implements ShouldBroadcastNow
 {
     use Dispatchable;
     use InteractsWithSockets;
