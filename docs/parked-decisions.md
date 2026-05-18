@@ -31,7 +31,14 @@ Anything resolved here gets moved into `SPEC.md` and removed from this list.
 
 ## 2. Vendor clients: hand-rolled vs. Laravel AI SDK / Prism
 
-**Status:** Parked. Revisit at **Phase 1 / M4 (API Keys + Vendor Clients)**.
+**Status:** ✅ Resolved 2026-05-17 at M4 chunk 2 — **hand-rolled `LlmClientInterface`**.
+
+**Decision summary:**
+- **Laravel AI SDK** (`laravel/ai`, first-party) covers all 9 of our vendors and streaming, but does not expose logprobs / token-level data and has no documented path for custom vendors. SPEC §3.1.5's logits-distribution panel needs OpenAI logprobs, so the SDK abstraction would block a real product requirement.
+- **Prism** (`prism-php/prism`) is still pre-1.0 (v0.100 as of March 2026) with API instability risk and less clear vendor coverage. Wouldn't pick over the first-party SDK unless it had features the SDK lacks.
+- **Hand-rolled** wins because: (a) we need raw access to logprobs + token-level streams for the visualization, (b) the 9 vendors cluster into only 4 protocols (OpenAI-compatible × 5, Anthropic event-stream, Google streamGenerateContent, HuggingFace TGI), plus a Meta-via-Together wrapper, (c) HTTP-level testing with recorded fixtures is more reliable than wrapping an SDK's evolving surface.
+
+**Original (now-historical) deliberation kept for context:**
 
 **Current spec plan:** Hand-rolled `LlmClientInterface` with 9 vendor implementations (`OpenAiClient`, `AnthropicClient`, etc.).
 

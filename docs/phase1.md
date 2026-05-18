@@ -147,14 +147,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Tasks**
 - [x] Migration: `api_keys` (encrypted_key, vendor, label). Schema includes `user_id` (FK with cascadeOnDelete), `vendor`, nullable `label`, encrypted `encrypted_key` (text, via Eloquent's `encrypted` cast), denormalized `last_four` (cached plaintext suffix to avoid per-row decrypts on the list view), nullable `last_used_at`, timestamps. `UNIQUE(user_id, vendor, label)` per SPEC §6 so a user can hold multiple keys per vendor under different labels. `App\Models\ApiKey` with `$casts['encrypted_key' => 'encrypted']` + `booted()` event that recomputes `last_four` on every save when the key is dirty. `encrypted_key` hidden from serialization. `User::apiKeys()` HasMany added. ApiKeyFactory with `vendor()` / `withLabel(?string)` / `withKey()` states.
 - [x] API key management UI: list + add + delete; values shown masked except last 4 chars. `App\Http\Controllers\ApiKeysController` with `index` / `store` / `destroy` — authenticated only, plus a 403 check in `destroy` so users can't delete each other's keys (even admins are blocked — BYOK trust means admins shouldn't see other users' secrets). Vendor allowlist `SUPPORTED_VENDORS` (the same 9 from SPEC §3.2.2) gates the validation. Duplicate (vendor, label) returns a friendly `label` validation error instead of a DB exception. Page at `resources/js/Pages/ApiKeys/Index.tsx` replaces the chunk-3 ComingSoon placeholder. Form has vendor select / optional label / masked password input. Existing keys table shows masked display (`••••XXXX`), last_used date, and a Delete button. Flash banners for add/delete. Plaintext key value is never echoed back to the client after creation.
-- [ ] Define `LlmClientInterface`:
-  ```php
-  interface LlmClientInterface {
-      public function stream(string $prompt, array $params, array $history): Generator;
-      public function complete(string $prompt, array $params, array $history): array;
-      public function countTokens(string $text): int;
-  }
-  ```
+- [x] Define `LlmClientInterface`. Parked decision (`docs/parked-decisions.md` item 2) resolved 2026-05-17 in favor of hand-rolled — Laravel AI SDK doesn't expose logprobs (needed for SPEC §3.1.5 logits panel) and has no custom-vendor extension path; Prism is still pre-1.0. The interface is in `app/Services/Llm/Contracts/LlmClientInterface.php` with three methods: `stream()` returns `Generator<int, LlmTokenChunk>`, `complete()` returns `LlmCompletion`, plus a `vendor()` identifier for factory registration. Slight refinement from the SPEC: takes an `ApiKey` model + the `model` string explicitly (rather than relying on globals), and yields/returns typed value objects (`LlmTokenChunk`, `LlmCompletion`, `LlmUsage`) instead of bare arrays. Vendor-specific exceptions (`InvalidApiKeyException`, `VendorRateLimitedException`, generic `LlmClientException`) communicate user-actionable error categories.
 - [ ] Implement clients (one per vendor — each is its own sub-task with its own tests):
   - [ ] `OpenAiClient` (SSE streaming, supports `logprobs`)
   - [ ] `AnthropicClient` (event-stream)
@@ -165,8 +158,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
   - [ ] `TogetherClient` (OpenAI-compatible)
   - [ ] `HuggingFaceClient` (Inference Endpoints, text-generation-inference protocol)
   - [ ] `MetaViaTogetherClient` — Llama models proxied through Together/Groq; thin wrapper.
-- [ ] Vendor client factory: maps `models.vendor` → concrete class.
-- [ ] Per-vendor token counter (uses `tiktoken-php` for OpenAI; approximate BPE for others).
+- [x] Vendor client factory: maps `models.vendor` → concrete class. `App\Services\Llm\LlmClientFactory` is registration-based — concrete clients call `$factory->register($client)` and are looked up by `vendor()`. Registered as a singleton in `AppServiceProvider::register()` so registrations apply app-wide and tests can swap implementations via the same instance. `clientFor()` throws `UnsupportedVendorException` on unknown vendor. The 9 concrete client registrations land in chunks 3-5.
+- [x] Per-vendor token counter (uses `tiktoken-php` for OpenAI; approximate BPE for others). `yethee/tiktoken` ^1.1 installed (PHP port of OpenAI's BPE tables). `TokenCounterInterface` exposes `count()` + `isExact()` (the UI uses the latter to decide whether to show a `~` prefix). `OpenAiTokenCounter` selects encoding by model name (o200k_base for GPT-4o family, cl100k_base for older). `ApproximateTokenCounter` uses chars/4 with a small whitespace adjustment (±20% accuracy in English prose). `TokenCounterFactory` returns the OpenAI counter for `vendor=openai` and the approximate counter for everything else. `EncoderProvider` cached as a singleton so BPE tables load once per process.
 - [ ] Integration tests: recorded HTTP fixtures (VCR-style) per vendor for streaming + non-streaming.
 - [ ] Smoke-test artisan command: `php artisan vendors:smoke-test` — hits each vendor with a 5-token prompt using a CI-account key.
 

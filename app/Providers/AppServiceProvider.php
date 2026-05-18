@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Llm\LlmClientFactory;
+use App\Services\Llm\TokenCounter\TokenCounterFactory;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -9,12 +11,23 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
+use Yethee\Tiktoken\EncoderProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Singleton so any vendor-client registration applies app-wide,
+        // and tests can swap implementations via the same instance.
+        // Concrete clients are registered as they land in M4 chunks 3-5.
+        $this->app->singleton(LlmClientFactory::class);
+
+        // tiktoken's BPE merge tables are large; share one provider
+        // across all OpenAiTokenCounter instances.
+        $this->app->singleton(EncoderProvider::class);
+
+        // Convenience singleton so callers can just type-hint the factory.
+        $this->app->singleton(TokenCounterFactory::class);
     }
 
     public function boot(): void
