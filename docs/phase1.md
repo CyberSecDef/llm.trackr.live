@@ -145,8 +145,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** Per-user encrypted API key storage and a working `LlmClientInterface` implementation for all 9 vendors.
 
 **Tasks**
-- [ ] Migration: `api_keys` (encrypted_key, vendor, label).
-- [ ] API key management UI: list + add + delete; values shown masked except last 4 chars.
+- [x] Migration: `api_keys` (encrypted_key, vendor, label). Schema includes `user_id` (FK with cascadeOnDelete), `vendor`, nullable `label`, encrypted `encrypted_key` (text, via Eloquent's `encrypted` cast), denormalized `last_four` (cached plaintext suffix to avoid per-row decrypts on the list view), nullable `last_used_at`, timestamps. `UNIQUE(user_id, vendor, label)` per SPEC §6 so a user can hold multiple keys per vendor under different labels. `App\Models\ApiKey` with `$casts['encrypted_key' => 'encrypted']` + `booted()` event that recomputes `last_four` on every save when the key is dirty. `encrypted_key` hidden from serialization. `User::apiKeys()` HasMany added. ApiKeyFactory with `vendor()` / `withLabel(?string)` / `withKey()` states.
+- [x] API key management UI: list + add + delete; values shown masked except last 4 chars. `App\Http\Controllers\ApiKeysController` with `index` / `store` / `destroy` — authenticated only, plus a 403 check in `destroy` so users can't delete each other's keys (even admins are blocked — BYOK trust means admins shouldn't see other users' secrets). Vendor allowlist `SUPPORTED_VENDORS` (the same 9 from SPEC §3.2.2) gates the validation. Duplicate (vendor, label) returns a friendly `label` validation error instead of a DB exception. Page at `resources/js/Pages/ApiKeys/Index.tsx` replaces the chunk-3 ComingSoon placeholder. Form has vendor select / optional label / masked password input. Existing keys table shows masked display (`••••XXXX`), last_used date, and a Delete button. Flash banners for add/delete. Plaintext key value is never echoed back to the client after creation.
 - [ ] Define `LlmClientInterface`:
   ```php
   interface LlmClientInterface {

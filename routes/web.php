@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\ModelsController as AdminModelsController;
 use App\Http\Controllers\Admin\UsersController as AdminUsersController;
+use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Application;
@@ -63,10 +64,9 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('models.index');
 
-    Route::get('api-keys', fn () => Inertia::render('ComingSoon', [
-        'feature' => 'API Keys',
-        'milestone' => 'M4',
-    ]))->name('api-keys.index');
+    Route::get('api-keys', [ApiKeysController::class, 'index'])->name('api-keys.index');
+    Route::post('api-keys', [ApiKeysController::class, 'store'])->name('api-keys.store');
+    Route::delete('api-keys/{apiKey}', [ApiKeysController::class, 'destroy'])->name('api-keys.destroy');
 
     Route::get('settings', [SettingsController::class, 'show'])->name('settings');
     Route::patch('settings', [SettingsController::class, 'update'])->name('settings.update');

@@ -54,11 +54,11 @@ it('renders the Models placeholder', function () {
         ->assertSee('"feature":"Models"', escape: false);
 });
 
-it('renders the API Keys placeholder', function () {
+it('renders the API Keys index page (no longer a placeholder after M4 chunk 1)', function () {
     $this->actingAs(User::factory()->create())
         ->get('/api-keys')
         ->assertStatus(200)
-        ->assertSee('"feature":"API Keys"', escape: false);
+        ->assertSee('"component":"ApiKeys\/Index"', escape: false);
 });
 
 it('renders the Settings placeholder', function () {
