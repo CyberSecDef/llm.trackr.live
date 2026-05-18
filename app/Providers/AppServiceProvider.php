@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Llm\Clients\OpenAiClient;
 use App\Services\Llm\LlmClientFactory;
 use App\Services\Llm\TokenCounter\TokenCounterFactory;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -35,6 +36,11 @@ class AppServiceProvider extends ServiceProvider
         // socialiteproviders/microsoft registers itself via this event.
         // Google and Facebook are built into laravel/socialite directly.
         Event::listen(SocialiteWasCalled::class, [MicrosoftExtendSocialite::class, 'handle']);
+
+        // Register concrete vendor clients with the factory. Chunks 4-5
+        // add the other 8 vendors alongside.
+        $factory = $this->app->make(LlmClientFactory::class);
+        $factory->register($this->app->make(OpenAiClient::class));
 
         // Per-user, per-hour rate limit for run submissions.
         // Reads users.max_runs_per_hour live so admin edits take effect on the

@@ -62,4 +62,14 @@ return [
         'api_key' => env('OPENROUTER_API_KEY'),
     ],
 
+    // ─── LLM vendors (BYOK; actual keys live on api_keys.encrypted_key) ──
+    // Only base URLs + optional org/headers live here. Per-model overrides
+    // come from models.api_base_url. Empty `base_url` falls back to each
+    // vendor's documented default in the client class.
+
+    'openai' => [
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'organization' => env('OPENAI_ORGANIZATION'),
+    ],
+
 ];
