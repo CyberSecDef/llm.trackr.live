@@ -72,4 +72,22 @@ return [
         'organization' => env('OPENAI_ORGANIZATION'),
     ],
 
+    'xai' => [
+        'base_url' => env('XAI_BASE_URL', 'https://api.x.ai/v1'),
+    ],
+
+    'mistral' => [
+        'base_url' => env('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
+    ],
+
+    'groq' => [
+        // Note the /openai/ path segment — Groq exposes its OpenAI-compatible
+        // surface at that prefix, separate from any future Groq-native endpoints.
+        'base_url' => env('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
+    ],
+
+    'together' => [
+        'base_url' => env('TOGETHER_BASE_URL', 'https://api.together.xyz/v1'),
+    ],
+
 ];

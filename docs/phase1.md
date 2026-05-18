@@ -152,10 +152,10 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
   - [x] `OpenAiClient` (SSE streaming, supports `logprobs`). Lives at `app/Services/Llm/Clients/OpenAiClient.php`. Streams via `POST /v1/chat/completions` with `stream: true`, parses SSE through a reusable `App\Services\Llm\Support\SseParser`. Requests `stream_options.include_usage = true` so the final chunk carries token totals. Passes through `temperature`, `top_p`, `max_tokens`, `seed`; silently drops `top_k` (not an OpenAI param). When `params.logprobs = true`, sets `top_logprobs = 5` (or override) so the logits panel can show the top-5 alternatives. HTTP error mapping: 401/403 → `InvalidApiKeyException`, 429 → `VendorRateLimitedException` (with `Retry-After` parsed), other non-2xx → generic `LlmClientException`. `api_keys.last_used_at` updated on success. Registered with `LlmClientFactory` in `AppServiceProvider::boot()`. **Designed as the base class for chunk 4's 4 OpenAI-compatible vendors** (xAI, Mistral, Groq, Together) — subclasses only override `vendor()` and `defaultBaseUrl()`.
   - [ ] `AnthropicClient` (event-stream)
   - [ ] `GoogleGeminiClient` (streamGenerateContent)
-  - [ ] `XaiClient` (OpenAI-compatible)
-  - [ ] `MistralClient` (OpenAI-compatible)
-  - [ ] `GroqClient` (OpenAI-compatible, very fast)
-  - [ ] `TogetherClient` (OpenAI-compatible)
+  - [x] `XaiClient` (OpenAI-compatible). Thin subclass of `OpenAiClient` — only overrides `vendor()`, `defaultBaseUrl()` (api.x.ai/v1), and `extraHeaders()` to drop the OpenAI-Organization header. All payload / streaming / error-mapping logic inherited.
+  - [x] `MistralClient` (OpenAI-compatible). Same pattern; base URL api.mistral.ai/v1. Mistral's optional `safe_prompt` parameter isn't exposed in our params shape; can be added if needed.
+  - [x] `GroqClient` (OpenAI-compatible, very fast). Same pattern; base URL api.groq.com/openai/v1 (note the `/openai/` prefix — Groq exposes their OpenAI-compatible surface there).
+  - [x] `TogetherClient` (OpenAI-compatible). Same pattern; base URL api.together.xyz/v1. Will also back `MetaViaTogetherClient` in chunk 5.
   - [ ] `HuggingFaceClient` (Inference Endpoints, text-generation-inference protocol)
   - [ ] `MetaViaTogetherClient` — Llama models proxied through Together/Groq; thin wrapper.
 - [x] Vendor client factory: maps `models.vendor` → concrete class. `App\Services\Llm\LlmClientFactory` is registration-based — concrete clients call `$factory->register($client)` and are looked up by `vendor()`. Registered as a singleton in `AppServiceProvider::register()` so registrations apply app-wide and tests can swap implementations via the same instance. `clientFor()` throws `UnsupportedVendorException` on unknown vendor. The 9 concrete client registrations land in chunks 3-5.

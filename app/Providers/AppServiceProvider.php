@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Services\Llm\Clients\GroqClient;
+use App\Services\Llm\Clients\MistralClient;
 use App\Services\Llm\Clients\OpenAiClient;
+use App\Services\Llm\Clients\TogetherClient;
+use App\Services\Llm\Clients\XaiClient;
 use App\Services\Llm\LlmClientFactory;
 use App\Services\Llm\TokenCounter\TokenCounterFactory;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -37,10 +41,16 @@ class AppServiceProvider extends ServiceProvider
         // Google and Facebook are built into laravel/socialite directly.
         Event::listen(SocialiteWasCalled::class, [MicrosoftExtendSocialite::class, 'handle']);
 
-        // Register concrete vendor clients with the factory. Chunks 4-5
-        // add the other 8 vendors alongside.
+        // Register concrete vendor clients with the factory.
+        // OpenAI + the 4 OpenAI-compatible cluster vendors land here.
+        // The vendor-specific protocol clients (Anthropic, Google,
+        // HuggingFace, Meta-via-Together wrapper) join in chunk 5.
         $factory = $this->app->make(LlmClientFactory::class);
         $factory->register($this->app->make(OpenAiClient::class));
+        $factory->register($this->app->make(XaiClient::class));
+        $factory->register($this->app->make(MistralClient::class));
+        $factory->register($this->app->make(GroqClient::class));
+        $factory->register($this->app->make(TogetherClient::class));
 
         // Per-user, per-hour rate limit for run submissions.
         // Reads users.max_runs_per_hour live so admin edits take effect on the
