@@ -8,7 +8,14 @@ Anything resolved here gets moved into `SPEC.md` and removed from this list.
 
 ## 1. WebSocket server: Soketi vs. Laravel Reverb
 
-**Status:** Parked. Revisit at **Phase 1 / M6 (Realtime + Streaming Pipeline)**.
+**Status:** ✅ Resolved 2026-05-18 at M6 chunk 1 — **Laravel Reverb**.
+
+**Decision summary:**
+- **Reverb** is production-ready per Laravel 13.x docs, first-party (same release cadence as the rest of our stack), Pusher-protocol-compatible (so `pusher-js` + Echo on the frontend works identically), installs via `php artisan install:broadcasting`, and adds zero non-PHP services. The SPEC originally chose Soketi specifically to avoid a Pusher dep — Reverb removes that concern without adding any Node service of its own.
+- **Soketi** is still functional but the last release (v1.6.1) is from March 2024 — ~14 months stale at the time of the decision — and the maintainer acknowledges "infrequent updates" + "tight" time. For a project just starting, that maintenance risk outweighs Soketi's only real advantage (battle-tested at higher scale than we need).
+- The frontend / broadcasting / Echo / `pusher-js` plumbing is **identical** between the two, so this is purely a server-side swap — SPEC §5 + §10.2 updated accordingly.
+
+**Original (now-historical) deliberation kept for context:**
 
 **Current spec choice:** Soketi (Pusher-protocol-compatible, self-hosted Node service).
 

@@ -220,8 +220,8 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 **Purpose:** End-to-end: prompt submitted → vendor stream → WebSocket events → frontend receives them. No visualization yet (M7/M8), but a debug page shows raw events.
 
 **Tasks**
-- [ ] Install + configure Soketi on local dev (Docker compose).
-- [ ] Configure Laravel `broadcasting.php` with Pusher driver pointed at local Soketi.
+- [x] Install + configure Laravel Reverb on local dev. (SPEC originally said Soketi; swapped to Reverb at M6 chunk 1 — see `docs/parked-decisions.md` item 1.) `composer require laravel/reverb` ^1.10. `config/reverb.php` + `routes/channels.php` published. `bootstrap/app.php` extended with `channels: __DIR__.'/../routes/channels.php'` so channel-auth routes register at boot.
+- [x] Configure Laravel `broadcasting.php` with the `reverb` driver. `BROADCAST_CONNECTION=reverb` set in `.env.example`. Old PUSHER_* env keys renamed to `REVERB_*` to match Laravel conventions. Vite frontend env mirrors (`VITE_REVERB_APP_KEY` etc.) added for the chunk 4 Echo wiring. `resources/js/types/global.d.ts` `ImportMetaEnv` augmentation updated accordingly.
 - [ ] Install Laravel Echo + `pusher-js` on frontend.
 - [ ] Channel: `private-runs.{run_id}`, with auth via Sanctum.
 - [ ] Job: `StreamRunJob` — pulls run, picks vendor client, iterates `stream()`, broadcasts events.
@@ -235,7 +235,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 
 **Exit criteria**
 - Submitting a run results in tokens streaming to the debug page within ~200 ms of vendor delivery.
-- Killing the Soketi container mid-stream causes the frontend to fall back to SSE without dropping tokens.
+- Killing the Reverb process mid-stream causes the frontend to fall back to SSE without dropping tokens.
 - A second tab subscribing to the same `runs.{id}` channel receives the same events.
 
 ---
@@ -406,11 +406,11 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [ ] nginx vhost config: two server blocks on the same VPS.
   - `llm.trackr.live` — production. Document root: `/var/www/llm-viz/current/public`.
   - `staging.llm.trackr.live` — staging. Document root: `/var/www/llm-viz-staging/current/public`.
-  - Both proxy WebSocket upgrades to local Soketi on their own ports (e.g., 6001 prod, 6002 staging).
+  - Both proxy WebSocket upgrades to the local Reverb instance on their own ports (e.g., 8080 prod, 8081 staging).
 - [ ] HTTPS via Let's Encrypt **direct to the VPS** (no Cloudflare in front). HSTS header enabled. Auto-renewal via certbot's systemd timer.
 - [ ] supervisor configs (with separate program names for prod and staging so they can be restarted independently):
   - `llm-viz-queue` / `llm-viz-staging-queue` — queue workers.
-  - `llm-viz-soketi` / `llm-viz-staging-soketi` — WebSocket servers on different ports.
+  - `llm-viz-reverb` / `llm-viz-staging-reverb` — `php artisan reverb:start` on different ports.
   - (Optional) Puppeteer is spawn-per-export — no supervisor entry needed.
 - [ ] Two isolated SQLite databases (`/var/www/llm-viz/database/database.sqlite` and likewise for staging) so staging data can't pollute production.
 - [ ] Deploy script: `./deploy.sh {env}` — `git pull`, `composer install --no-dev`, `npm ci && npm run build`, `php artisan migrate --force`, `php artisan optimize`, `supervisorctl restart llm-viz-{env}-*`.

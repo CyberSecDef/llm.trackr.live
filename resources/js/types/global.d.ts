@@ -9,11 +9,10 @@ declare global {
         readonly VITE_SENTRY_DSN?: string;
         readonly VITE_SENTRY_ENVIRONMENT?: string;
         readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string;
-        readonly VITE_PUSHER_APP_KEY?: string;
-        readonly VITE_PUSHER_HOST?: string;
-        readonly VITE_PUSHER_PORT?: string;
-        readonly VITE_PUSHER_SCHEME?: string;
-        readonly VITE_PUSHER_APP_CLUSTER?: string;
+        readonly VITE_REVERB_APP_KEY?: string;
+        readonly VITE_REVERB_HOST?: string;
+        readonly VITE_REVERB_PORT?: string;
+        readonly VITE_REVERB_SCHEME?: string;
     }
 
     interface ImportMeta {

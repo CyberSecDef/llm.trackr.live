@@ -241,7 +241,7 @@ The visualization state machine is **deterministic** given `(model_metadata, tok
                                             │
                                             ▼
                                   [WebSocket broadcaster]
-                                  (Pusher / Soketi / Laravel WebSockets)
+                                       (Laravel Reverb)
                                             │
                                             ▼
                               [Frontend: Inertia + React]
@@ -322,7 +322,7 @@ On completion:
 | Database | SQLite 3 |
 | ORM | Eloquent |
 | HTTP client | Guzzle 7 |
-| WebSockets | Soketi (self-hosted on VPS, Pusher-protocol-compatible) — runs as a long-lived Node process under supervisor. Laravel broadcasts via the Pusher driver. |
+| WebSockets | Laravel Reverb (first-party, self-hosted on VPS, Pusher-protocol-compatible) — runs as `php artisan reverb:start` under supervisor. Laravel broadcasts via the Pusher driver pointed at the local Reverb instance. Originally specified as Soketi; swapped to Reverb at M6 chunk 1 (see `docs/parked-decisions.md` item 1). |
 | Auth | Laravel Sanctum + Socialite (Google / Microsoft / Facebook). No Fortify, no email/password. |
 | Encryption | Laravel built-in encrypter (AES-256-CBC) |
 | Testing (backend) | PHPUnit + Pest |
@@ -555,7 +555,7 @@ Replays must produce identical animations. State machine inputs:
 All simulated values (synthetic logprobs, attention heatmaps, MoE routing probabilities) are derived from a deterministic PRNG seeded with the above.
 
 ### 10.2 Streaming vs Polling
-- **Primary:** WebSocket broadcasting via Soketi (self-hosted, Pusher-protocol-compatible). Soketi runs as a long-lived Node process under supervisor on the VPS. Laravel uses the Pusher broadcast driver pointed at the local Soketi host.
+- **Primary:** WebSocket broadcasting via Laravel Reverb (first-party, self-hosted, Pusher-protocol-compatible). Reverb runs as `php artisan reverb:start` under supervisor on the VPS. Laravel uses the Pusher broadcast driver pointed at the local Reverb instance.
 - **Fallback:** SSE direct from a Laravel `Symfony\StreamedResponse` proxy. Vendor stream chunks are written to the response body as they arrive via Guzzle's `Stream` option. Used when client cannot establish WebSocket (corporate firewall, etc.).
 - **Channel model:** Each run gets a private channel `runs.{run_id}`. Frontend subscribes after receiving `run_id` from the submit response.
 
@@ -597,7 +597,7 @@ All simulated values (synthetic logprobs, attention heatmaps, MoE routing probab
 - ~~Auth providers~~ → **Google + Microsoft + Facebook**, no email/password.
 - ~~Key model~~ → **BYOK only**, no billing infrastructure.
 - ~~GIF export pipeline~~ → **Server-side ffmpeg** via queued job. **Default renderer is SVG/2D**; Puppeteer is opt-in per deployment (`GIF_RENDERER=puppeteer`).
-- ~~WebSocket implementation~~ → **Soketi self-hosted** on the VPS (Pusher-protocol-compatible).
+- ~~WebSocket implementation~~ → **Laravel Reverb self-hosted** on the VPS (Pusher-protocol-compatible). Originally Soketi; swapped at M6 chunk 1, see `docs/parked-decisions.md`.
 - ~~Frontend tokenizer~~ → **tiktoken-js for OpenAI**, generic BPE approximation for all other vendors (with `~` tooltip indicator).
 - ~~Registry source~~ → **OpenRouter API as upstream**, weekly refresh, manual override allowed.
 - ~~Conversation persistence~~ → **Persistent threads** (chat-history UX, linear only — no branching in Phase 1).
