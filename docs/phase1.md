@@ -21,7 +21,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
-| M7 | Frontend — Static UI | M5 | 7 days | 🟡 In progress (chunk 1 done) | |
+| M7 | Frontend — Static UI | M5 | 7 days | 🟡 In progress (chunks 1–2 done) | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
@@ -283,7 +283,7 @@ Carry-forward into M7
 
 **Tasks**
 - [x] Foundation (chunk 1): shadcn/ui deps installed; `resources/js/lib/utils.ts` with `cn()` helper; `tailwind.config.js` extended with theme tokens that read from CSS vars (`bg-background`, `text-foreground`, etc.); `resources/css/app.css` `:root` + `.dark` blocks define the light + dark palettes; `tailwindcss-animate` plugin registered for Radix animations. 5 baseline UI primitives in `resources/js/Components/ui/`: `button.tsx` (6 variants × 4 sizes via CVA, `asChild` Slot pattern), `card.tsx` (6 subcomponents), `input.tsx`, `label.tsx`, `separator.tsx` (decorative + a11y modes). 22 Vitest tests cover render, variant classes, `cn()` override behavior (tailwind-merge resolves conflicts so caller `h-20` beats base `h-10`), ref forwarding, `asChild` Slot, and Separator a11y modes. **Lint exception:** Label primitive disables `jsx-a11y/label-has-associated-control` inline — design-system primitives can't statically prove association; that's the caller's job (via `htmlFor` / `id`).
-- [ ] Layout shell: sidebar (Dashboard, Threads, Models, API Keys, Settings, Admin if applicable), top bar, content area.
+- [x] Layout shell (chunk 2): `AppLayout` refactored onto shadcn primitives — sidebar uses Button + Separator, nav links use theme tokens (`bg-accent` / `text-accent-foreground` for active state) instead of hardcoded slate-*. Desktop ≥ md: 240px fixed sidebar. Sub-md: sidebar hides, top bar shows a hamburger Button that opens the sidebar in a left-anchored Sheet (Radix Dialog wrapper; new primitive in `resources/js/Components/ui/sheet.tsx` with `side` variant + 4 Vitest tests). Same `NAV_ITEMS` array drives both desktop + mobile — single source of truth. Optional `<title>` prop slot in the top bar; falls back to the active nav item's label. SheetHeader/SheetTitle/SheetDescription kept in `sr-only` wrapper to satisfy Radix's a11y requirement without visual noise.
 - [ ] Dashboard page: stats widgets + recent threads.
 - [ ] Threads list page: searchable, filterable by archived/tagged.
 - [ ] Thread detail page: chat-transcript header (read-only prior runs), prompt input footer.
@@ -298,8 +298,8 @@ Carry-forward into M7
 - [ ] API Keys page: list/add/delete (encrypted submission).
 - [ ] Settings page: store_prompts toggle, display name.
 - [ ] Admin pages: model registry CRUD, user list with rate-limit editor.
-- [ ] 404 / error pages.
-- [ ] Responsive: desktop + tablet breakpoints.
+- [x] 404 / error pages (chunk 2): 4 Inertia pages in `resources/js/Pages/Errors/` (NotFound, Forbidden, Expired, ServerError) all built on a shared `ErrorShell` component. Standalone — NOT wrapped in `AppLayout` since unauthenticated users hit them too. `usePage().props.auth.user` determines whether the CTA reads "Back to dashboard" or "Sign in". `bootstrap/app.php`'s `withExceptions` callback maps 403/404/419/500/503 to the matching component and renders via Inertia when `APP_DEBUG=false`; debug-mode dev keeps the stock Laravel whoops/error pages with stack traces. JSON requests bypass the Inertia render and get the default JSON error response (so XHR callers aren't broken). 6 Pest tests cover the 404/403/500 mappings, authed + unauthed paths, and the JSON-bypass.
+- [x] Responsive: desktop + tablet breakpoints (chunk 2). The sidebar↔drawer breakpoint is `md` (768px); below that the layout collapses to a single column with the hamburger Sheet. Verified on a phone (192.168.0.205:8001) via the dev-login magic-link flow.
 
 **Exit criteria**
 - All pages render and route correctly.
