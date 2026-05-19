@@ -1512,6 +1512,143 @@ describe('<ThreadShow /> — right-pane viewer toggle (M8 chunk 1)', function ()
         await screen.findByTestId('embedding-scene-stub');
     });
 
+    // ─── M8 chunk 8: PlaybackControls ──────────────────────────────
+
+    it('renders PlaybackControls above the right-pane toggle', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('playback-controls')).toBeInTheDocument();
+        // Default state: playing, 1×, LIVE pill visible.
+        expect(screen.getByTestId('playback-live-pill')).toBeInTheDocument();
+        expect(screen.getByTestId('playback-speed-1')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('pausing freezes the viz event count (live text stops updating)', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'A',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'B',
+                        index: 1,
+                        t_ms: 200,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Initially LIVE — visibleEvents is the full array.
+        expect(screen.getByTestId('viz-pane-stub').textContent).toContain('2 events');
+
+        // Pause → LIVE pill disappears, cursor/total counter appears.
+        fireEvent.click(screen.getByTestId('playback-toggle'));
+        expect(screen.queryByTestId('playback-live-pill')).not.toBeInTheDocument();
+        expect(screen.getByTestId('playback-cursor-jump')).toBeInTheDocument();
+    });
+
+    it('clicking a speed button updates the segmented control state', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('playback-speed-2'));
+        expect(screen.getByTestId('playback-speed-2')).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByTestId('playback-speed-1')).toHaveAttribute('aria-pressed', 'false');
+        // No longer LIVE because speed !== 1.
+        expect(screen.queryByTestId('playback-live-pill')).not.toBeInTheDocument();
+    });
+
+    it('jump-to-live (clicking the cursor counter) returns to LIVE at 1×', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'A',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'B',
+                        index: 1,
+                        t_ms: 200,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('playback-toggle')); // pause
+        fireEvent.click(screen.getByTestId('playback-cursor-jump')); // resume + live
+        expect(screen.getByTestId('playback-live-pill')).toBeInTheDocument();
+    });
+
     it('forwards the lifted stream to whichever pane is visible', function () {
         mockStreamState.value = {
             events: [

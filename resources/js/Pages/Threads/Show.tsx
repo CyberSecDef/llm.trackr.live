@@ -14,11 +14,13 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { lazy, Suspense } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
+import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
+import PlaybackControls from '@/Components/PlaybackControls';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import ParameterControls, {
@@ -144,6 +146,10 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
     // subscription (no double event handlers, no double Echo
     // channels). View toggle just swaps the renderer.
     const stream = useRunStream(activeRun?.id ?? null);
+    // M8 chunk 8: playback engine slices the event stream — every
+    // viz + the live transcript text consumes `visibleEvents` so
+    // pause/step/speed apply uniformly.
+    const playback = useEventPlayback(stream.events);
 
     return (
         <>
@@ -158,7 +164,7 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                             <ThreadHeader thread={thread} />
                             <Transcript
                                 runs={runs}
-                                events={stream.events}
+                                events={playback.visibleEvents}
                                 usableModels={usable_models}
                             />
                             <PromptFooter
@@ -170,12 +176,23 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                         </div>
                         <aside
                             aria-label="Run visualization"
-                            className="lg:sticky lg:top-6 lg:self-start"
+                            className="lg:sticky lg:top-6 lg:self-start space-y-2"
                             data-testid="viz-aside"
                         >
+                            <PlaybackControls
+                                playing={playback.playing}
+                                speed={playback.speed}
+                                cursor={playback.cursor}
+                                totalEvents={playback.totalEvents}
+                                isLive={playback.isLive}
+                                onToggle={playback.toggle}
+                                onStep={playback.step}
+                                onSpeedChange={(s: PlaybackSpeed) => playback.setSpeed(s)}
+                                onJumpToLive={playback.jumpToLive}
+                            />
                             <RightPane
                                 activeRun={activeRun}
-                                events={stream.events}
+                                events={playback.visibleEvents}
                                 status={stream.status}
                                 transport={stream.transport}
                                 disabled={stream.disabled}
