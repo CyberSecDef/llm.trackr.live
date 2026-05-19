@@ -16,6 +16,10 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useRunStream } from '@/hooks/useRunStream';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
+import ParameterControls, {
+    PARAM_DEFAULTS,
+    type ParameterValues,
+} from '@/Components/ParameterControls';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -465,6 +469,7 @@ function useDebouncedPreview(
     threadId: number,
     prompt: string,
     modelId: number,
+    maxTokens: number | undefined,
 ): { preview: PromptPreviewResponse | null; loading: boolean } {
     const [preview, setPreview] = useState<PromptPreviewResponse | null>(null);
     const [loading, setLoading] = useState(false);
@@ -496,7 +501,11 @@ function useDebouncedPreview(
                     Accept: 'application/json',
                     'X-CSRF-TOKEN': csrf,
                 },
-                body: JSON.stringify({ prompt, model_id: modelId }),
+                body: JSON.stringify({
+                    prompt,
+                    model_id: modelId,
+                    parameters: maxTokens !== undefined ? { max_tokens: maxTokens } : {},
+                }),
             })
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data: PromptPreviewResponse | null) => {
@@ -512,7 +521,10 @@ function useDebouncedPreview(
             clearTimeout(handle);
             controller.abort();
         };
-    }, [threadId, prompt, modelId]);
+        // max_tokens is also a re-run trigger so the budget bar
+        // updates when the chunk-8 ParameterControls user adjusts
+        // the reserve.
+    }, [threadId, prompt, modelId, maxTokens]);
 
     return { preview, loading };
 }
@@ -532,14 +544,23 @@ function PromptForm({
             ? defaultModelId
             : (usableModels[0]?.id ?? 0);
 
-    const form = useForm({
+    const form = useForm<{
+        prompt: string;
+        model_id: number;
+        parameters: ParameterValues;
+    }>({
         prompt: '',
         model_id: initialModelId,
-        parameters: { temperature: 0.7 },
+        parameters: { ...PARAM_DEFAULTS, seed: null },
     });
 
     const textareaRef = useAutosizeTextarea(form.data.prompt);
-    const { preview } = useDebouncedPreview(threadId, form.data.prompt, form.data.model_id);
+    const { preview } = useDebouncedPreview(
+        threadId,
+        form.data.prompt,
+        form.data.model_id,
+        form.data.parameters.max_tokens,
+    );
     const [historyOpen, setHistoryOpen] = useState(false);
 
     const submit = (e: FormEvent) => {
@@ -609,6 +630,13 @@ function PromptForm({
                 </form>
 
                 {selectedModel && <ModelMetadataCard model={selectedModel} />}
+
+                <ParameterControls
+                    value={form.data.parameters}
+                    onChange={(next) => form.setData('parameters', next)}
+                    supported={selectedModel?.supported_params ?? null}
+                    maxTokensCeiling={selectedModel?.context_length ?? null}
+                />
             </CardContent>
         </Card>
     );

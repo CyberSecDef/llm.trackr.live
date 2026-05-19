@@ -222,6 +222,10 @@ class ThreadController extends Controller
                 'context_length' => $model->context_length,
                 'pricing_input_per_million' => $model->pricing_input_per_million,
                 'pricing_output_per_million' => $model->pricing_output_per_million,
+                // supported_params drives the M7 chunk-8 inference-parameter
+                // controls — disables sliders for params the vendor doesn't
+                // accept on this model.
+                'supported_params' => $model->supported_params,
             ])
             ->all();
     }

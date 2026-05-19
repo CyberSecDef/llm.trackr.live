@@ -162,6 +162,10 @@ describe('GET /threads/{thread} — render shape', function () {
                 ->where('usable_models.0.pricing_input_per_million', 5)
                 ->where('usable_models.0.pricing_output_per_million', 15)
                 ->has('usable_models.0.position_encoding')
+                // M7 chunk 8: supported_params drives the parameter
+                // controls' vendor-gated availability.
+                ->has('usable_models.0.supported_params.temperature')
+                ->has('usable_models.0.supported_params.max_tokens')
         );
     });
 });

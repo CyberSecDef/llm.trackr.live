@@ -43,6 +43,16 @@ export interface PickerModel {
     context_length: number | null;
     pricing_input_per_million: number | null;
     pricing_output_per_million: number | null;
+    // Optional + nullable so older fixtures + registry rows without
+    // the column set still typecheck; ParameterControls falls back
+    // to "all params supported" when missing.
+    supported_params?: {
+        temperature?: boolean;
+        top_p?: boolean;
+        top_k?: boolean;
+        max_tokens?: boolean;
+        seed?: boolean;
+    } | null;
 }
 
 interface ModelPickerProps {
