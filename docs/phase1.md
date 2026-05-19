@@ -21,7 +21,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
-| M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
+| M7 | Frontend — Static UI | M5 | 7 days | 🟡 In progress (chunk 1 done) | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
@@ -275,7 +275,14 @@ Carry-forward into M7
 
 **Purpose:** All non-animated UI is built and navigable: dashboard, thread list, thread detail, prompt input, model selector, parameter controls, API keys, settings, admin. The submit button works (creates a run) but the right pane just shows the debug log from M6.
 
+**Decisions (chunk 1):**
+- **Component library:** shadcn/ui (Radix + Tailwind, copy-paste pattern). Frontloads accessibility via Radix internals; gives us a consistent visual language for M7 + M8 + M12. Initial deps: `class-variance-authority`, `clsx`, `tailwind-merge`, `tailwindcss-animate`, `lucide-react`, `@radix-ui/react-slot`. Components live in `resources/js/Components/ui/`. CSS-var-based theme tokens in `resources/css/app.css` (light + dark palettes); `<html class="dark">` makes dark the app default. `components.json` is committed for future `npx shadcn@latest add ...` calls.
+- **Token counter:** server-side AJAX via the existing `TokenCounter` services (from M3). Debounced POST endpoint per chunk 5; no client-side WASM, no bundle bloat. Slight perceptible lag during fast typing is acceptable for the M7 scope.
+- **Onboarding:** empty-state CTAs on each page + a "Set up your first API key" nudge on the dashboard when none exists. No dedicated wizard route.
+- **Split:** 10 chunks (foundation → layout + 404 + responsive → dashboard → threads list → thread detail → prompt input → model selector → param controls → account/admin polish → closeout).
+
 **Tasks**
+- [x] Foundation (chunk 1): shadcn/ui deps installed; `resources/js/lib/utils.ts` with `cn()` helper; `tailwind.config.js` extended with theme tokens that read from CSS vars (`bg-background`, `text-foreground`, etc.); `resources/css/app.css` `:root` + `.dark` blocks define the light + dark palettes; `tailwindcss-animate` plugin registered for Radix animations. 5 baseline UI primitives in `resources/js/Components/ui/`: `button.tsx` (6 variants × 4 sizes via CVA, `asChild` Slot pattern), `card.tsx` (6 subcomponents), `input.tsx`, `label.tsx`, `separator.tsx` (decorative + a11y modes). 22 Vitest tests cover render, variant classes, `cn()` override behavior (tailwind-merge resolves conflicts so caller `h-20` beats base `h-10`), ref forwarding, `asChild` Slot, and Separator a11y modes. **Lint exception:** Label primitive disables `jsx-a11y/label-has-associated-control` inline — design-system primitives can't statically prove association; that's the caller's job (via `htmlFor` / `id`).
 - [ ] Layout shell: sidebar (Dashboard, Threads, Models, API Keys, Settings, Admin if applicable), top bar, content area.
 - [ ] Dashboard page: stats widgets + recent threads.
 - [ ] Threads list page: searchable, filterable by archived/tagged.
