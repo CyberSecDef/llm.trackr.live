@@ -80,6 +80,41 @@ describe('GET /threads/{thread} — render shape', function () {
         );
     });
 
+    it('includes total_layers + architecture_type from the run\'s model snapshot (M8 chunk 2)', function () {
+        $user = User::factory()->create();
+        $thread = Thread::factory()->for($user)->create();
+        Run::factory()->for($user)->for($thread)->create([
+            'sequence_in_thread' => 1,
+            'parameters' => [
+                'model_snapshot' => [
+                    'layers' => 80,
+                    'architecture_type' => 'moe',
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)->get("/threads/{$thread->id}")->assertInertia(
+            fn ($page) => $page
+                ->where('runs.0.total_layers', 80)
+                ->where('runs.0.architecture_type', 'moe')
+        );
+    });
+
+    it('falls back to null when the model snapshot lacks layer info', function () {
+        $user = User::factory()->create();
+        $thread = Thread::factory()->for($user)->create();
+        Run::factory()->for($user)->for($thread)->create([
+            'sequence_in_thread' => 1,
+            'parameters' => [], // no model_snapshot
+        ]);
+
+        $this->actingAs($user)->get("/threads/{$thread->id}")->assertInertia(
+            fn ($page) => $page
+                ->where('runs.0.total_layers', null)
+                ->where('runs.0.architecture_type', null)
+        );
+    });
+
     it('does not leak another user\'s runs into the response', function () {
         $owner = User::factory()->create();
         $stranger = User::factory()->create();

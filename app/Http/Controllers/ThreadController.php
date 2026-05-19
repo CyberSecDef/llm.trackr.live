@@ -131,6 +131,11 @@ class ThreadController extends Controller
                 'estimated_cost' => $run->estimated_cost,
                 'model_id' => $run->model_id,
                 'created_at' => $run->created_at?->toIso8601String(),
+                // M8 chunk 2: viz needs the snapshot's layer count
+                // even after the model row gets deleted / re-keyed.
+                // The snapshot is the canonical source per SPEC §10.1.
+                'total_layers' => $run->parameters['model_snapshot']['layers'] ?? null,
+                'architecture_type' => $run->parameters['model_snapshot']['architecture_type'] ?? null,
             ]);
 
         return Inertia::render('Threads/Show', [

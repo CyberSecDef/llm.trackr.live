@@ -145,6 +145,8 @@ const sampleRun = {
     estimated_cost: 0.0001,
     model_id: 10,
     created_at: '2026-05-18T00:00:00Z',
+    total_layers: null,
+    architecture_type: null,
 };
 
 // The preview hook fetches /threads/{id}/preview on a 400ms debounce.

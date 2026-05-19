@@ -77,6 +77,9 @@ interface RunRow {
     estimated_cost: number | null;
     model_id: number;
     created_at: string | null;
+    // M8 chunk 2: derived from the run's model snapshot, used by VizPane.
+    total_layers: number | null;
+    architecture_type: string | null;
 }
 
 // The thread.show controller hands us the full model metadata; type is
@@ -224,11 +227,8 @@ function RightPane({
         }
     }, [status]);
 
-    const totalLayers = activeRun?.id
-        ? // chunk-2 will plumb the model snapshot through; for now
-          // pass undefined so the placeholder scene renders.
-          undefined
-        : undefined;
+    const totalLayers = activeRun?.total_layers ?? null;
+    const architectureType = activeRun?.architecture_type ?? null;
 
     return (
         <div className="space-y-2">
@@ -287,7 +287,12 @@ function RightPane({
                         </Card>
                     }
                 >
-                    <VizPane events={events} status={status} totalLayers={totalLayers} />
+                    <VizPane
+                        events={events}
+                        status={status}
+                        totalLayers={totalLayers}
+                        architectureType={architectureType}
+                    />
                 </Suspense>
             ) : (
                 <LiveStreamPane
