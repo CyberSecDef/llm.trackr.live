@@ -1,6 +1,9 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
+import { Button } from '@/Components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
+import { Label } from '@/Components/ui/label';
 import type { PageProps } from '@/types';
 
 interface Props {
@@ -21,55 +24,82 @@ export default function Settings({ storePrompts }: Props) {
     return (
         <>
             <Head title="Settings" />
-            <AppLayout>
-                <div className="p-8 max-w-2xl">
-                    <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-                    <p className="mt-3 text-sm text-slate-400">Profile and privacy preferences.</p>
+            <AppLayout title="Settings">
+                <div className="p-6 md:p-8 max-w-2xl space-y-6">
+                    <header>
+                        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Profile and privacy preferences.
+                        </p>
+                    </header>
 
-                    <form
-                        onSubmit={handleSubmit}
-                        className="mt-8 space-y-6 bg-slate-900 border border-slate-800 rounded-lg p-6"
-                    >
-                        <fieldset className="space-y-2">
-                            <legend className="text-sm font-medium">Privacy</legend>
-                            <div className="flex items-start gap-3">
-                                <input
-                                    id="store_prompts"
-                                    type="checkbox"
-                                    checked={data.store_prompts}
-                                    onChange={(e) => setData('store_prompts', e.target.checked)}
-                                    className="mt-1"
-                                />
-                                <label htmlFor="store_prompts" className="text-sm cursor-pointer">
-                                    <span className="block">Store my prompts</span>
-                                    <span className="block text-xs text-slate-500 mt-1">
-                                        When enabled, your prompts are saved with each run so you
-                                        can replay later. Turn off to keep only a hash — replays
-                                        will still work but the prompt text won&apos;t be
-                                        recoverable.
-                                    </span>
-                                </label>
-                            </div>
-                            {errors.store_prompts && (
-                                <p role="alert" className="text-xs text-red-400">
-                                    {errors.store_prompts}
-                                </p>
-                            )}
-                        </fieldset>
-
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded text-sm font-medium"
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Privacy</CardTitle>
+                            <CardDescription>
+                                Control whether your prompt text is stored alongside each run.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <form
+                                onSubmit={handleSubmit}
+                                className="space-y-6"
+                                data-testid="settings-form"
                             >
-                                {processing ? 'Saving…' : 'Save'}
-                            </button>
-                            {recentlySuccessful && flash?.status === 'settings-saved' && (
-                                <span className="text-xs text-emerald-400">Saved.</span>
-                            )}
-                        </div>
-                    </form>
+                                <fieldset className="space-y-2">
+                                    <div className="flex items-start gap-3">
+                                        <input
+                                            id="store_prompts"
+                                            type="checkbox"
+                                            checked={data.store_prompts}
+                                            onChange={(e) =>
+                                                setData('store_prompts', e.target.checked)
+                                            }
+                                            className="mt-1 h-4 w-4 rounded border-input"
+                                            data-testid="store-prompts-checkbox"
+                                        />
+                                        <div className="flex-1">
+                                            <Label
+                                                htmlFor="store_prompts"
+                                                className="cursor-pointer"
+                                            >
+                                                Store my prompts
+                                            </Label>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                When enabled, your prompts are saved with each run
+                                                so you can replay later. Turn off to keep only a
+                                                hash — replays will still work but the prompt text
+                                                won&apos;t be recoverable.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {errors.store_prompts && (
+                                        <p role="alert" className="text-xs text-destructive">
+                                            {errors.store_prompts}
+                                        </p>
+                                    )}
+                                </fieldset>
+
+                                <div className="flex items-center gap-3">
+                                    <Button
+                                        type="submit"
+                                        disabled={processing}
+                                        data-testid="settings-submit"
+                                    >
+                                        {processing ? 'Saving…' : 'Save'}
+                                    </Button>
+                                    {recentlySuccessful && flash?.status === 'settings-saved' && (
+                                        <span
+                                            className="text-xs text-emerald-400"
+                                            data-testid="settings-saved"
+                                        >
+                                            Saved.
+                                        </span>
+                                    )}
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
                 </div>
             </AppLayout>
         </>
