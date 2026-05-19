@@ -562,6 +562,91 @@ describe('<ThreadShow /> — transcript', function () {
         expect(within(card).getByTestId('live-numbers').textContent).toMatch(/— t\/s/);
     });
 
+    // ─── M8 chunk 5b: LogitsDistribution wired into LiveRunBody ────
+
+    it('renders LogitsDistribution inside an active run row when logprobs are present', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'Paris',
+                        index: 0,
+                        t_ms: 200,
+                        logprobs: [
+                            { token: 'Paris', logprob: Math.log(0.7) },
+                            { token: 'the', logprob: Math.log(0.2) },
+                            { token: 'located', logprob: Math.log(0.1) },
+                        ],
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        expect(within(card).getByTestId('logits-distribution')).toBeInTheDocument();
+        // Chosen token bar comes first (highest prob, descending order).
+        const firstRow = within(card).getByTestId('logit-row-0');
+        expect(firstRow.getAttribute('data-chosen')).toBe('true');
+    });
+
+    it('omits LogitsDistribution when no token has logprobs', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'Hi',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        expect(within(card).queryByTestId('logits-distribution')).not.toBeInTheDocument();
+    });
+
     it('keeps StaticRunBody for a completed run even with events present', function () {
         // Event stream is non-empty (could happen briefly between
         // run.completed and the 400ms terminal-reload), but the row

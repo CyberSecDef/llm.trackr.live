@@ -17,6 +17,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
+import LogitsDistribution from '@/Components/LogitsDistribution';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import ParameterControls, {
@@ -612,6 +613,11 @@ function LiveRunBody({
                     </span>
                 </p>
             </div>
+
+            {/* M8 chunk 5b: top-K logits when the vendor provides them.
+                Returns null when no logprobs are available — no
+                placeholder, no fabrication (chunk-5 decision). */}
+            <LogitsDistribution events={events} />
 
             <LiveMetricsStrip metrics={metrics} />
         </>
