@@ -6,6 +6,7 @@ use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DebugRunController;
+use App\Http\Controllers\PromptPreviewController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
 use App\Http\Controllers\SettingsController;
@@ -83,6 +84,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('settings', [SettingsController::class, 'show'])->name('settings');
     Route::patch('settings', [SettingsController::class, 'update'])->name('settings.update');
+
+    // Prompt-input preview: returns history + token counts + budget
+    // for the prompt-input panel (M7 chunk 6a). Same-user gate. Cheap
+    // enough to call on a debounce as the user types.
+    Route::post('threads/{thread}/preview', [PromptPreviewController::class, 'show'])
+        ->name('threads.preview');
 
     // Run submission. Throttled per-user via the 'runs' RateLimiter
     // registered in AppServiceProvider (live-reads users.max_runs_per_hour).

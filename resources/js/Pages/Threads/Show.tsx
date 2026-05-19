@@ -1,6 +1,16 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Archive, ArchiveRestore, ArrowLeft, KeyRound, Pencil, Trash2 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import {
+    AlertTriangle,
+    Archive,
+    ArchiveRestore,
+    ArrowLeft,
+    ChevronDown,
+    ChevronRight,
+    KeyRound,
+    Pencil,
+    Trash2,
+} from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
@@ -387,6 +397,93 @@ function PromptFooter({
     );
 }
 
+interface PromptPreviewResponse {
+    history: Array<{ role: string; content: string }>;
+    token_counts: { history: number; prompt: number; reserved: number; total: number };
+    budget: number;
+    fits: boolean;
+    over_by: number;
+    model: { id: number; vendor: string; name: string; context_length: number | null };
+}
+
+/**
+ * useAutosizeTextarea — drives the textarea's height from its
+ * scrollHeight on every change. Plain JS; no library.
+ */
+function useAutosizeTextarea(value: string) {
+    const ref = useRef<HTMLTextAreaElement | null>(null);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        // Reset to a small height first so scrollHeight reports the
+        // content's natural size (not the previously-set height).
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
+    }, [value]);
+    return ref;
+}
+
+/**
+ * useDebouncedPreview — POSTs to /threads/{id}/preview on a 400ms
+ * debounce as the user types. Tracks loading + error state; aborts
+ * any in-flight request when inputs change.
+ */
+function useDebouncedPreview(
+    threadId: number,
+    prompt: string,
+    modelId: number,
+): { preview: PromptPreviewResponse | null; loading: boolean } {
+    const [preview, setPreview] = useState<PromptPreviewResponse | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!modelId) {
+            // Edge case: no model selected (shouldn't normally happen
+            // — PromptForm picks the first usable model at mount).
+            // setState-in-effect is documented; we're clearing stale
+            // preview state for a degraded input rather than a render-
+            // driven derivation.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setPreview(null);
+            return;
+        }
+        const controller = new AbortController();
+
+        setLoading(true);
+        const handle = setTimeout(() => {
+            // CSRF + cookies handled automatically by same-origin fetch.
+            const csrf =
+                document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+            fetch(`/threads/${threadId}/preview`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                body: JSON.stringify({ prompt, model_id: modelId }),
+            })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data: PromptPreviewResponse | null) => {
+                    if (data) setPreview(data);
+                    setLoading(false);
+                })
+                .catch((err) => {
+                    if (err.name !== 'AbortError') setLoading(false);
+                });
+        }, 400);
+
+        return () => {
+            clearTimeout(handle);
+            controller.abort();
+        };
+    }, [threadId, prompt, modelId]);
+
+    return { preview, loading };
+}
+
 function PromptForm({
     threadId,
     usableModels,
@@ -408,6 +505,10 @@ function PromptForm({
         parameters: { temperature: 0.7 },
     });
 
+    const textareaRef = useAutosizeTextarea(form.data.prompt);
+    const { preview } = useDebouncedPreview(threadId, form.data.prompt, form.data.model_id);
+    const [historyOpen, setHistoryOpen] = useState(false);
+
     const submit = (e: FormEvent) => {
         e.preventDefault();
         form.post(`/threads/${threadId}/runs`, {
@@ -422,21 +523,39 @@ function PromptForm({
         return acc;
     }, {});
 
+    const overBudget = preview ? !preview.fits : false;
+    const submitDisabled = form.processing || form.data.prompt.trim() === '' || overBudget;
+
     return (
         <Card data-testid="prompt-form">
-            <CardContent className="p-4">
+            <CardContent className="p-4 space-y-3">
+                {preview && preview.history.length > 0 && (
+                    <HistoryPreview
+                        history={preview.history}
+                        open={historyOpen}
+                        onToggle={() => setHistoryOpen((v) => !v)}
+                    />
+                )}
+
                 <form onSubmit={submit} className="space-y-3">
                     <Textarea
+                        ref={textareaRef}
                         value={form.data.prompt}
                         onChange={(e) => form.setData('prompt', e.target.value)}
                         placeholder="Type your prompt…"
                         aria-label="Prompt"
                         data-testid="prompt-textarea"
                         rows={4}
+                        // Autosize hook clamps to 480px; rows is just the
+                        // starting/minimum visible height.
+                        className="resize-none"
                     />
                     {form.errors.prompt && (
                         <p className="text-xs text-destructive">{form.errors.prompt}</p>
                     )}
+
+                    {preview && <BudgetIndicator preview={preview} />}
+
                     <div className="flex items-center gap-3 flex-wrap">
                         <label className="text-xs text-muted-foreground" htmlFor="model-select">
                             Model
@@ -459,16 +578,115 @@ function PromptForm({
                             ))}
                         </select>
                         <div className="flex-1" />
-                        <Button
-                            type="submit"
-                            disabled={form.processing || form.data.prompt.trim() === ''}
-                            data-testid="submit-prompt"
-                        >
+                        <Button type="submit" disabled={submitDisabled} data-testid="submit-prompt">
                             Submit
                         </Button>
                     </div>
                 </form>
             </CardContent>
         </Card>
+    );
+}
+
+function HistoryPreview({
+    history,
+    open,
+    onToggle,
+}: {
+    history: Array<{ role: string; content: string }>;
+    open: boolean;
+    onToggle: () => void;
+}) {
+    return (
+        <div className="rounded-md border border-border bg-muted/30" data-testid="history-preview">
+            <button
+                type="button"
+                onClick={onToggle}
+                className="flex w-full items-center gap-2 p-2 text-xs text-muted-foreground hover:text-foreground"
+                aria-expanded={open}
+            >
+                {open ? (
+                    <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                ) : (
+                    <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                )}
+                Conversation history ({history.length} {history.length === 1 ? 'turn' : 'turns'})
+            </button>
+            {open && (
+                <div className="space-y-2 px-3 pb-3 pt-1" data-testid="history-preview-body">
+                    {history.map((turn, idx) => (
+                        <div key={idx} className="space-y-0.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {turn.role}
+                            </p>
+                            <pre className="whitespace-pre-wrap text-xs font-mono text-foreground/90">
+                                {turn.content}
+                            </pre>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function BudgetIndicator({ preview }: { preview: PromptPreviewResponse }) {
+    // Skip when the model has no recorded context_length (budget=0
+    // == "unlimited / unknown" from ContextBudgetCalculator).
+    if (preview.budget <= 0) {
+        return (
+            <p className="text-xs text-muted-foreground" data-testid="token-counts">
+                {preview.token_counts.total.toLocaleString()} tokens
+                <span className="ml-1 text-muted-foreground/70">
+                    ({preview.token_counts.history.toLocaleString()} history ·{' '}
+                    {preview.token_counts.prompt.toLocaleString()} prompt)
+                </span>
+            </p>
+        );
+    }
+
+    const percent = Math.min(100, (preview.token_counts.total / preview.budget) * 100);
+    const isWarn = percent >= 80 && percent < 100;
+    const isOver = !preview.fits;
+    const fillClass = isOver ? 'bg-destructive' : isWarn ? 'bg-amber-500' : 'bg-primary';
+
+    return (
+        <div className="space-y-1" data-testid="budget-indicator">
+            <div className="flex items-center justify-between text-xs">
+                <p data-testid="token-counts">
+                    {preview.token_counts.total.toLocaleString()} /{' '}
+                    {preview.budget.toLocaleString()} tokens
+                    <span className="ml-1 text-muted-foreground/70">
+                        ({preview.token_counts.history.toLocaleString()} history ·{' '}
+                        {preview.token_counts.prompt.toLocaleString()} prompt)
+                    </span>
+                </p>
+                {isOver && (
+                    <span
+                        className="flex items-center gap-1 text-destructive"
+                        data-testid="over-budget"
+                    >
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                        {preview.over_by.toLocaleString()} over
+                    </span>
+                )}
+                {isWarn && !isOver && (
+                    <span
+                        className="flex items-center gap-1 text-amber-500"
+                        data-testid="near-budget"
+                    >
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                        approaching limit
+                    </span>
+                )}
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                    className={cn('h-full transition-all', fillClass)}
+                    style={{ width: `${Math.max(2, percent)}%` }}
+                    data-testid="budget-bar-fill"
+                />
+            </div>
+        </div>
     );
 }

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { routerGet, routerPatch, routerDelete, formPatch, formPost, setDataMock } = vi.hoisted(
     () => ({
@@ -90,6 +90,28 @@ const sampleRun = {
     created_at: '2026-05-18T00:00:00Z',
 };
 
+// The preview hook fetches /threads/{id}/preview on a 400ms debounce.
+// We stub fetch globally so the existing tests don't trigger real
+// network calls; preview-specific tests below override the resolved
+// value per-test.
+beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = vi.fn(() =>
+        Promise.resolve({
+            ok: true,
+            json: () =>
+                Promise.resolve({
+                    history: [],
+                    token_counts: { history: 0, prompt: 0, reserved: 0, total: 0 },
+                    budget: 128000,
+                    fits: true,
+                    over_by: 0,
+                    model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 128000 },
+                }),
+        }),
+    );
+});
+
 afterEach(() => {
     routerGet.mockReset();
     routerPatch.mockReset();
@@ -97,6 +119,9 @@ afterEach(() => {
     formPatch.mockReset();
     formPost.mockReset();
     setDataMock.mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis as any).fetch;
+    vi.useRealTimers();
 });
 
 describe('<ThreadShow /> — header', function () {
@@ -341,5 +366,193 @@ describe('<ThreadShow /> — prompt footer', function () {
         await user.type(screen.getByTestId('prompt-textarea'), 'Hello');
         fireEvent.submit(screen.getByTestId('prompt-form').querySelector('form')!);
         expect(formPost).toHaveBeenCalledWith('/threads/1/runs', expect.any(Object));
+    });
+});
+
+describe('<ThreadShow /> — preview panel (chunk 6a)', function () {
+    /**
+     * Replace the default fetch stub with a per-test response.
+     */
+    function stubPreview(response: object) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn(() =>
+            Promise.resolve({ ok: true, json: () => Promise.resolve(response) }),
+        );
+    }
+
+    it('does not render token counts before fetch resolves', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Before fetch resolves there's no token-counts element yet.
+        expect(screen.queryByTestId('token-counts')).not.toBeInTheDocument();
+    });
+
+    it('debounces preview fetch by 400ms and posts to the right URL', async function () {
+        vi.useFakeTimers();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fetchMock = (globalThis as any).fetch as ReturnType<typeof vi.fn>;
+        // Initial render kicks off a preview fetch — but only after the debounce.
+        expect(fetchMock).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(410);
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/threads/1/preview',
+            expect.objectContaining({ method: 'POST' }),
+        );
+    });
+
+    it('renders token-counts + budget bar when fetch resolves', async function () {
+        stubPreview({
+            history: [],
+            token_counts: { history: 100, prompt: 50, reserved: 0, total: 150 },
+            budget: 1000,
+            fits: true,
+            over_by: 0,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 1000 },
+        });
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Wait for the debounce + promise resolution.
+        const counts = await screen.findByTestId('token-counts');
+        expect(counts.textContent).toContain('150');
+        expect(counts.textContent).toContain('1,000');
+        expect(screen.getByTestId('budget-bar-fill')).toBeInTheDocument();
+    });
+
+    it('shows "approaching limit" between 80% and 100%', async function () {
+        stubPreview({
+            history: [],
+            token_counts: { history: 0, prompt: 850, reserved: 0, total: 850 },
+            budget: 1000,
+            fits: true,
+            over_by: 0,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 1000 },
+        });
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(await screen.findByTestId('near-budget')).toBeInTheDocument();
+        expect(screen.queryByTestId('over-budget')).not.toBeInTheDocument();
+    });
+
+    it('shows "over budget" and disables submit when over context', async function () {
+        stubPreview({
+            history: [],
+            token_counts: { history: 0, prompt: 2000, reserved: 0, total: 2000 },
+            budget: 1000,
+            fits: false,
+            over_by: 1000,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 1000 },
+        });
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        await user.type(screen.getByTestId('prompt-textarea'), 'hello');
+        expect(await screen.findByTestId('over-budget')).toBeInTheDocument();
+        expect(screen.getByTestId('submit-prompt')).toBeDisabled();
+    });
+
+    it('renders the history preview only when history is non-empty', async function () {
+        stubPreview({
+            history: [
+                { role: 'system', content: 'You are helpful.' },
+                { role: 'user', content: 'Hi' },
+                { role: 'assistant', content: 'Hello!' },
+            ],
+            token_counts: { history: 30, prompt: 5, reserved: 0, total: 35 },
+            budget: 1000,
+            fits: true,
+            over_by: 0,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 1000 },
+        });
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(await screen.findByTestId('history-preview')).toBeInTheDocument();
+        // Closed by default — body not shown.
+        expect(screen.queryByTestId('history-preview-body')).not.toBeInTheDocument();
+    });
+
+    it('toggles the history preview body when clicked', async function () {
+        stubPreview({
+            history: [{ role: 'user', content: 'turn 1' }],
+            token_counts: { history: 5, prompt: 5, reserved: 0, total: 10 },
+            budget: 1000,
+            fits: true,
+            over_by: 0,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: 1000 },
+        });
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const preview = await screen.findByTestId('history-preview');
+        await user.click(within(preview).getByRole('button'));
+        expect(screen.getByTestId('history-preview-body')).toBeInTheDocument();
+        expect(within(preview).getByText('turn 1')).toBeInTheDocument();
+    });
+
+    it('omits the budget bar when the model has no recorded context_length', async function () {
+        stubPreview({
+            history: [],
+            token_counts: { history: 0, prompt: 50, reserved: 0, total: 50 },
+            budget: 0,
+            fits: true,
+            over_by: 0,
+            model: { id: 10, vendor: 'openai', name: 'gpt-4o', context_length: null },
+        });
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Token-counts still render in the no-budget branch.
+        const counts = await screen.findByTestId('token-counts');
+        expect(counts.textContent).toContain('50');
+        // But no fill bar.
+        expect(screen.queryByTestId('budget-bar-fill')).not.toBeInTheDocument();
     });
 });
