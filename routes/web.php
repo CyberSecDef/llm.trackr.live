@@ -10,6 +10,7 @@ use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
+use App\Http\Controllers\ThreadController;
 use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -51,12 +52,17 @@ Route::middleware('auth')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
 
-    // Placeholder pages — full IA visible from day one, each routes to a
-    // ComingSoon view that calls out the milestone where the feature lands.
-    Route::get('threads', fn () => Inertia::render('ComingSoon', [
-        'feature' => 'Threads',
-        'milestone' => 'M5',
-    ]))->name('threads.index');
+    // Threads list — search / filter / paginated (M7 chunk 4).
+    Route::get('threads', [ThreadController::class, 'index'])->name('threads.index');
+    Route::post('threads', [ThreadController::class, 'store'])->name('threads.store');
+
+    // Per-thread detail page lands in M7 chunk 5. Until then this is a
+    // placeholder so the `store` redirect target resolves (no 404 on
+    // the create-thread flow).
+    Route::get('threads/{thread}', fn () => Inertia::render('ComingSoon', [
+        'feature' => 'Thread detail',
+        'milestone' => 'M7 chunk 5',
+    ]))->name('threads.show');
 
     // For non-admins this is a placeholder until M7 ships the public
     // model browser. Admins get sent to the registry admin page.

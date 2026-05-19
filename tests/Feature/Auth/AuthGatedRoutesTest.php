@@ -38,13 +38,11 @@ it('renders the Dashboard for an authenticated user', function () {
         ->assertSee('"component":"Dashboard"', escape: false);
 });
 
-it('renders the Threads placeholder', function () {
+it('renders the Threads index page (no longer a placeholder after M7 chunk 4)', function () {
     $this->actingAs(User::factory()->create())
         ->get('/threads')
         ->assertStatus(200)
-        ->assertSee('"component":"ComingSoon"', escape: false)
-        ->assertSee('"feature":"Threads"', escape: false)
-        ->assertSee('"milestone":"M5"', escape: false);
+        ->assertSee('"component":"Threads\\/Index"', escape: false);
 });
 
 it('renders the Models placeholder', function () {
