@@ -12,7 +12,9 @@ import {
     Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
@@ -24,6 +26,11 @@ import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
+import type { RunEvent } from '@/types/runs';
+
+// M8: lazy-load the Three.js / D3 viz so its bundle (~600KB) is
+// only fetched when a user actually views a thread.
+const VizPane = lazy(() => import('@/Components/Viz/VizPane'));
 import {
     AlertDialog,
     AlertDialogAction,
@@ -124,6 +131,10 @@ function findActiveRun(runs: RunRow[]): RunRow | null {
 
 export default function ThreadShow({ thread, runs, usable_models, has_api_keys }: ThreadShowProps) {
     const activeRun = findActiveRun(runs);
+    // Lifted up so both LiveStreamPane and VizPane share one
+    // subscription (no double event handlers, no double Echo
+    // channels). View toggle just swaps the renderer.
+    const stream = useRunStream(activeRun?.id ?? null);
 
     return (
         <>
@@ -132,7 +143,7 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                 <div className="p-6 md:p-8 max-w-7xl">
                     <BackLink />
                     {/* Desktop: 3-col grid with transcript+form spanning 2,
-                        live pane on the right. Mobile: single column. */}
+                        viz pane on the right. Mobile: single column. */}
                     <div className="mt-4 grid gap-6 lg:grid-cols-3">
                         <div className="lg:col-span-2 space-y-6 min-w-0">
                             <ThreadHeader thread={thread} />
@@ -145,16 +156,149 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                             />
                         </div>
                         <aside
-                            aria-label="Live run stream"
+                            aria-label="Run visualization"
                             className="lg:sticky lg:top-6 lg:self-start"
-                            data-testid="live-stream-aside"
+                            data-testid="viz-aside"
                         >
-                            <LiveStreamPane activeRun={activeRun} />
+                            <RightPane
+                                activeRun={activeRun}
+                                events={stream.events}
+                                status={stream.status}
+                                transport={stream.transport}
+                                disabled={stream.disabled}
+                            />
                         </aside>
                     </div>
                 </div>
             </AppLayout>
         </>
+    );
+}
+
+/**
+ * RightPane (M8 chunk 1) — viewer-toggle wrapper. Defaults to the
+ * VizPane (M8); a "Debug" toggle in the header swaps to the chunk-6b
+ * LiveStreamPane (event JSON list). Reduced-motion users get the
+ * debug view automatically and can't switch to the animated viz.
+ */
+function RightPane({
+    activeRun,
+    events,
+    status,
+    transport,
+    disabled,
+}: {
+    activeRun: RunRow | null;
+    events: RunEvent[];
+    status: 'idle' | 'streaming' | 'complete' | 'errored';
+    transport: 'websocket' | 'sse' | 'none';
+    disabled: boolean;
+}) {
+    const reducedMotion = useReducedMotion();
+    const [mode, setMode] = useState<'viz' | 'debug'>(reducedMotion ? 'debug' : 'viz');
+
+    // If the user's reduced-motion preference flips on while viz is
+    // active, automatically fall back to debug. We don't auto-flip
+    // back to viz when it flips off — the user can do that manually
+    // via the toggle. setState-in-effect is correct here: we're
+    // syncing local state with an external system (the OS-level
+    // media query), not deriving from props.
+    useEffect(() => {
+        if (reducedMotion && mode === 'viz') {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setMode('debug');
+        }
+    }, [reducedMotion, mode]);
+
+    // Terminal-status reload — fires regardless of which view is
+    // active so the transcript on the left always refreshes with the
+    // final output. Originally lived inside LiveStreamPane (M7 chunk
+    // 6b); lifted to RightPane in M8 chunk 1 because the viz can be
+    // the visible view at terminal time.
+    useEffect(() => {
+        if (status === 'complete' || status === 'errored') {
+            const handle = setTimeout(() => {
+                router.reload({ only: ['runs'] });
+            }, 400);
+            return () => clearTimeout(handle);
+        }
+    }, [status]);
+
+    const totalLayers = activeRun?.id
+        ? // chunk-2 will plumb the model snapshot through; for now
+          // pass undefined so the placeholder scene renders.
+          undefined
+        : undefined;
+
+    return (
+        <div className="space-y-2">
+            <div
+                className="flex rounded-md border border-border"
+                role="tablist"
+                aria-label="Right pane view"
+                data-testid="right-pane-toggle"
+            >
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'viz'}
+                    onClick={() => setMode('viz')}
+                    disabled={reducedMotion}
+                    title={
+                        reducedMotion
+                            ? 'Visualization disabled because prefers-reduced-motion is set.'
+                            : undefined
+                    }
+                    className={cn(
+                        'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
+                        mode === 'viz'
+                            ? 'bg-accent text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                        reducedMotion && 'cursor-not-allowed opacity-50',
+                    )}
+                    data-testid="view-viz"
+                >
+                    Visualization
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'debug'}
+                    onClick={() => setMode('debug')}
+                    className={cn(
+                        'flex-1 rounded-r-md px-3 py-1.5 text-xs transition-colors',
+                        mode === 'debug'
+                            ? 'bg-accent text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                    )}
+                    data-testid="view-debug"
+                >
+                    Debug
+                </button>
+            </div>
+
+            {mode === 'viz' ? (
+                <Suspense
+                    fallback={
+                        <Card data-testid="viz-loading">
+                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
+                                Loading visualization…
+                            </CardContent>
+                        </Card>
+                    }
+                >
+                    <VizPane events={events} status={status} totalLayers={totalLayers} />
+                </Suspense>
+            ) : (
+                <LiveStreamPane
+                    activeRun={activeRun}
+                    events={events}
+                    status={status}
+                    transport={transport}
+                    disabled={disabled}
+                />
+            )}
+        </div>
     );
 }
 
@@ -746,31 +890,31 @@ function BudgetIndicator({ preview }: { preview: PromptPreviewResponse }) {
 }
 
 /**
- * LiveStreamPane (M7 chunk 6b) — right-column live view of the
- * currently-active run's broadcast events. Subscribes via
- * useRunStream (WebSocket → SSE fallback from M6). When the run
- * reaches a terminal status, partial-reloads the page so the
- * transcript on the left picks up the final output_text + token
- * counts; the pane then returns to its empty state until the next
- * submit.
+ * LiveStreamPane (M7 chunk 6b; M8 chunk 1 took the stream as props).
+ * Right-column live view of the currently-active run's broadcast
+ * events. The subscription is now lifted to ThreadShow so the viz
+ * pane (M8) and this pane share one Echo channel.
  *
- * The SPEC's M7 exit criterion is "see tokens stream into the debug
- * pane on the right". M8 replaces this with the real visualization.
+ * When the run reaches a terminal status, partial-reloads the page
+ * so the transcript on the left picks up the final output_text +
+ * token counts; the pane then returns to its empty state until the
+ * next submit.
  */
-function LiveStreamPane({ activeRun }: { activeRun: RunRow | null }) {
-    const { events, status, transport, disabled } = useRunStream(activeRun?.id ?? null);
-
-    // When the run terminates, refresh the runs prop so the transcript
-    // updates with the final state. A small delay so the user sees the
-    // closing event for a beat before the page repaints.
-    useEffect(() => {
-        if (status === 'complete' || status === 'errored') {
-            const handle = setTimeout(() => {
-                router.reload({ only: ['runs'] });
-            }, 400);
-            return () => clearTimeout(handle);
-        }
-    }, [status]);
+function LiveStreamPane({
+    activeRun,
+    events,
+    status,
+    transport,
+    disabled,
+}: {
+    activeRun: RunRow | null;
+    events: RunEvent[];
+    status: 'idle' | 'streaming' | 'complete' | 'errored';
+    transport: 'websocket' | 'sse' | 'none';
+    disabled: boolean;
+}) {
+    // Auto-reload-on-terminal moved up to RightPane in M8 chunk 1
+    // so it fires regardless of which view (Viz / Debug) is active.
 
     if (!activeRun) {
         return (

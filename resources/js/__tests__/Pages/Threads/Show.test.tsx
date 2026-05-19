@@ -42,6 +42,19 @@ vi.mock('@/hooks/useRunStream', () => ({
     },
 }));
 
+// M8 chunk 1: stub the lazy-loaded VizPane so jsdom (no WebGL) doesn't
+// blow up when ThreadShow renders the right pane. The toggle behavior
+// + viz-aside wrapper are still observable in tests; full Three.js
+// integration is covered separately.
+vi.mock('@/Components/Viz/VizPane', () => ({
+    default: ({ events, status }: { events: Array<{ event: string }>; status: string }) =>
+        React.createElement(
+            'div',
+            { 'data-testid': 'viz-pane-stub' },
+            `viz: ${status}, ${events.length} events`,
+        ),
+}));
+
 vi.mock('@inertiajs/react', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@inertiajs/react')>();
     return {
@@ -604,6 +617,9 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        // M8 chunk 1: Viz is the default; flip to Debug to assert on
+        // LiveStreamPane DOM. The chunk-6b semantics are unchanged.
+        fireEvent.click(screen.getByTestId('view-debug'));
         expect(screen.getByTestId('live-empty')).toBeInTheDocument();
         expect(screen.queryByTestId('live-pane')).not.toBeInTheDocument();
         expect(subscribedToRunId).toHaveBeenCalledWith(null);
@@ -618,6 +634,7 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        fireEvent.click(screen.getByTestId('view-debug'));
         expect(screen.getByTestId('live-empty')).toBeInTheDocument();
         expect(subscribedToRunId).toHaveBeenCalledWith(null);
     });
@@ -640,6 +657,7 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        fireEvent.click(screen.getByTestId('view-debug'));
         expect(screen.getByTestId('live-pane')).toBeInTheDocument();
         expect(subscribedToRunId).toHaveBeenCalledWith(51);
     });
@@ -662,6 +680,7 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        fireEvent.click(screen.getByTestId('view-debug'));
         const pane = screen.getByTestId('live-events');
         expect(pane.textContent).toContain('"event": "run.started"');
         expect(pane.textContent).toContain('"event": "token.received"');
@@ -683,6 +702,7 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        fireEvent.click(screen.getByTestId('view-debug'));
         expect(screen.getByTestId('live-transport').textContent).toContain('sse');
     });
 
@@ -701,6 +721,7 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
                 has_api_keys={true}
             />,
         );
+        fireEvent.click(screen.getByTestId('view-debug'));
         expect(screen.getByTestId('live-transport-unavailable')).toBeInTheDocument();
     });
 
@@ -896,5 +917,175 @@ describe('<ThreadShow /> — model picker (chunk 7)', function () {
         );
         await user.click(screen.getByTestId('model-select'));
         expect(screen.queryByTestId('vendor-chips')).not.toBeInTheDocument();
+    });
+});
+
+describe('<ThreadShow /> — right-pane viewer toggle (M8 chunk 1)', function () {
+    // matchMedia is stubbed in test/setup.ts to return matches:false by
+    // default (no reduced-motion). These tests temporarily reassign it
+    // to simulate the user toggling the OS-level preference on.
+    const realMatchMedia = window.matchMedia;
+    afterEach(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).matchMedia = realMatchMedia;
+    });
+
+    function stubReducedMotion(matches: boolean) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).matchMedia = (query: string) => ({
+            matches,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+    }
+
+    it('renders the Viz pane by default', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // The mocked VizPane stub shows up; the LiveStreamPane does not.
+        expect(screen.getByTestId('viz-pane-stub')).toBeInTheDocument();
+        expect(screen.queryByTestId('live-empty')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('live-pane')).not.toBeInTheDocument();
+    });
+
+    it('toggle has Viz selected initially', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('view-viz')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('view-debug')).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('clicking Debug swaps to the LiveStreamPane', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('view-debug'));
+        expect(screen.getByTestId('live-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('viz-pane-stub')).not.toBeInTheDocument();
+    });
+
+    it('clicking Visualization swaps back to the Viz pane', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('view-debug'));
+        fireEvent.click(screen.getByTestId('view-viz'));
+        expect(screen.getByTestId('viz-pane-stub')).toBeInTheDocument();
+    });
+
+    it('prefers-reduced-motion forces the initial view to Debug', function () {
+        stubReducedMotion(true);
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('view-debug')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('view-viz')).toBeDisabled();
+        expect(screen.getByTestId('live-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('viz-pane-stub')).not.toBeInTheDocument();
+    });
+
+    it('forwards the lifted stream to whichever pane is visible', function () {
+        mockStreamState.value = {
+            events: [
+                { event: 'run.started', payload: { run_id: 51 } },
+                { event: 'token.received', payload: { run_id: 51, token: 'Hi', index: 0 } },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Viz pane sees the events (via the stub's text output).
+        expect(screen.getByTestId('viz-pane-stub').textContent).toContain('streaming');
+        expect(screen.getByTestId('viz-pane-stub').textContent).toContain('2 events');
+    });
+
+    it('lifts the useRunStream subscription up so only one subscription exists', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Both viz + debug share the same hook call — one subscription
+        // total, regardless of which view is active.
+        expect(subscribedToRunId).toHaveBeenCalledTimes(1);
+        expect(subscribedToRunId).toHaveBeenCalledWith(51);
+    });
+});
+
+describe('useReducedMotion (M8 chunk 1)', () => {
+    afterEach(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).matchMedia = (query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+    });
+
+    it('returns the current value of the media query at mount', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).matchMedia = (query: string) => ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+
+        const { useReducedMotion } = await import('@/hooks/useReducedMotion');
+        const { renderHook } = await import('@testing-library/react');
+        const { result } = renderHook(() => useReducedMotion());
+        expect(result.current).toBe(true);
     });
 });

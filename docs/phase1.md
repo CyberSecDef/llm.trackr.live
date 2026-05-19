@@ -22,7 +22,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
-| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
+| M8 | Frontend — Live Visualization | M6, M7 | 12 days | 🟡 In progress (chunk 1 done) | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
@@ -353,7 +353,14 @@ Carry-forward into M8
 **Purpose:** The right pane shows the real visualization, not the debug log. This is the vertical-slice gate.
 
 **Tasks**
-- [ ] Three.js setup: scene, camera, renderer, OrbitControls.
+**Decisions (chunk 1):**
+- **Lazy-load Three.js** via `React.lazy` + `Suspense` — keeps the ~600KB Three.js bundle out of the main app chunk so users without an in-flight run never download it. Vite splits `VizPane` into its own ~521KB chunk (132KB gzipped) as observed on chunk-1 build output.
+- **Keep the chunk-6b debug pane behind a viewer toggle.** Viz is the default; "Debug" tab swaps in the chunk-6b LiveStreamPane. Useful while M8 lands one chunk at a time — if a viz piece regresses, the debug fallback confirms events ARE arriving.
+- **Lift the `useRunStream` subscription up to `ThreadShow`.** Both views share one Echo channel; the toggle just swaps the renderer. Single source of truth for events.
+- **Split into 9 chunks** (1: foundation; 2: transformer stack; 3: token-flow particles; 4: live text + cost/TPS + KV bar; 5: D3 attention + logits; 6: MoE routing; 7: embedding scatter; 8: playback controls; 9: vertical-slice E2E + closeout).
+
+**Tasks**
+- [x] Three.js setup: scene, camera, renderer, OrbitControls (chunk 1). `resources/js/Components/Viz/VizPane.tsx` (lazy-loaded via `React.lazy` from `Threads/Show`) mounts a `WebGLRenderer` on a canvas ref, sets up a `PerspectiveCamera`, two lights (ambient + directional key), `OrbitControls` with damping. A `ResizeObserver` keeps the renderer's drawing buffer in sync with the canvas's CSS size (Three.js doesn't auto-resize). Animation loop guarded by a `mounted` flag so React strict-mode remounts don't leak `requestAnimationFrame` callbacks. Cleanup disposes geometries, materials, controls, and the renderer itself. Placeholder content: a slow-spinning wireframe icosahedron + empty-state overlay ("Submit a prompt to see the visualization") — replaced wholesale by chunk 2's transformer stack. **FpsCounter** (dev-only) sits absolute-positioned top-right of the canvas; rolling 30-frame window updating ~4×/sec. **`useReducedMotion` hook** subscribes to the `prefers-reduced-motion` media query and fires the auto-fallback in `RightPane`: when the user has motion reduced, the Viz tab is `aria-disabled` and the page boots into Debug; toggling the OS preference mid-session auto-flips to Debug. New jsdom polyfills (`window.matchMedia` + `ResizeObserver`/`scrollIntoView` from chunk 7) in `test/setup.ts`. The chunk-6b auto-reload-on-terminal effect lifted from `LiveStreamPane` to `RightPane` so it fires from any view. 8 new Vitest tests (default Viz mount, toggle aria + click flow, Debug → Viz round-trip, reduced-motion forces Debug + disables Viz tab, lifted stream forwards to both panes, single-subscription invariant, hook returns matchMedia at mount). The 6 chunk-6b tests that asserted on LiveStreamPane DOM updated to flip the Debug tab first.
 - [ ] 3D Transformer Stack component:
   - Renders N layers from model metadata.
   - Sequential highlight on `layer_advance` events.

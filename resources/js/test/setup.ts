@@ -51,6 +51,24 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = function () {};
 }
 
+// jsdom doesn't ship window.matchMedia; M8's useReducedMotion hook
+// (and any future media-query-driven UI) needs it. A read-only stub
+// is sufficient — tests that need to toggle reduced-motion mock the
+// hook directly rather than the underlying media-query.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).matchMedia = (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+    });
+}
+
 // Reset the DOM between tests to keep them isolated.
 afterEach(() => {
     cleanup();
