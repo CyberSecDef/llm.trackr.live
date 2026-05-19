@@ -2,6 +2,10 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import UserAvatar from '@/Components/UserAvatar';
+import { Button } from '@/Components/ui/button';
+import { Card, CardContent } from '@/Components/ui/card';
+import { Input } from '@/Components/ui/input';
+import { cn } from '@/lib/utils';
 import type { PageProps, UserRole } from '@/types';
 
 interface AdminUserRow {
@@ -42,8 +46,12 @@ function RateLimitForm({ user }: { user: AdminUserRow }) {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <input
+        <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2"
+            data-testid={`rate-limit-form-${user.id}`}
+        >
+            <Input
                 type="number"
                 min={0}
                 max={10000}
@@ -51,18 +59,28 @@ function RateLimitForm({ user }: { user: AdminUserRow }) {
                 value={data.max_runs_per_hour}
                 onChange={(e) => setData('max_runs_per_hour', Number(e.target.value))}
                 aria-label={`Max runs per hour for ${user.email}`}
-                className="w-20 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-sm"
+                className="h-8 w-20 text-xs"
+                data-testid={`rate-limit-input-${user.id}`}
             />
-            <button
+            <Button
                 type="submit"
+                size="sm"
+                variant="outline"
                 disabled={processing}
-                className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded"
+                data-testid={`rate-limit-submit-${user.id}`}
             >
                 {processing ? '…' : 'Save'}
-            </button>
-            {justSaved && <span className="text-xs text-emerald-400">✓</span>}
+            </Button>
+            {justSaved && (
+                <span
+                    className="text-xs text-emerald-400"
+                    data-testid={`rate-limit-saved-${user.id}`}
+                >
+                    ✓
+                </span>
+            )}
             {errors.max_runs_per_hour && (
-                <span role="alert" className="text-xs text-red-400">
+                <span role="alert" className="text-xs text-destructive">
                     {errors.max_runs_per_hour}
                 </span>
             )}
@@ -74,56 +92,65 @@ export default function AdminUsers({ users }: Props) {
     return (
         <>
             <Head title="Admin · Users" />
-            <AppLayout>
-                <div className="p-8 max-w-6xl">
-                    <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-                    <p className="mt-3 text-sm text-slate-400">
-                        {users.total} {users.total === 1 ? 'user' : 'users'} registered.
-                    </p>
+            <AppLayout title="Admin · Users">
+                <div className="p-6 md:p-8 max-w-6xl space-y-6">
+                    <header>
+                        <h1 className="text-2xl font-bold tracking-tight">Users</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {users.total} {users.total === 1 ? 'user' : 'users'} registered.
+                        </p>
+                    </header>
 
-                    <div className="mt-6 overflow-x-auto bg-slate-900 border border-slate-800 rounded-lg">
-                        <table className="w-full text-sm">
-                            <thead className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-800">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">User</th>
-                                    <th className="px-4 py-3 font-medium">Role</th>
-                                    <th className="px-4 py-3 font-medium">Max runs/hour</th>
-                                    <th className="px-4 py-3 font-medium">Joined</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {users.data.map((user) => (
-                                    <tr key={user.id}>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-3">
-                                                <UserAvatar user={user} size={28} />
-                                                <div className="min-w-0">
-                                                    <p className="truncate">{user.name ?? '—'}</p>
-                                                    <p className="text-xs text-slate-500 truncate">
-                                                        {user.email}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 font-mono text-xs">{user.role}</td>
-                                        <td className="px-4 py-3">
-                                            <RateLimitForm user={user} />
-                                        </td>
-                                        <td className="px-4 py-3 text-xs text-slate-500">
-                                            {user.created_at
-                                                ? new Date(user.created_at).toLocaleDateString()
-                                                : '—'}
-                                        </td>
+                    <Card>
+                        <CardContent className="p-0 overflow-x-auto">
+                            <table className="w-full text-sm" data-testid="users-table">
+                                <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                    <tr>
+                                        <th className="px-4 py-3 font-medium">User</th>
+                                        <th className="px-4 py-3 font-medium">Role</th>
+                                        <th className="px-4 py-3 font-medium">Max runs/hour</th>
+                                        <th className="px-4 py-3 font-medium">Joined</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody className="divide-y divide-border">
+                                    {users.data.map((user) => (
+                                        <tr key={user.id} data-testid={`user-row-${user.id}`}>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <UserAvatar user={user} size={28} />
+                                                    <div className="min-w-0">
+                                                        <p className="truncate">
+                                                            {user.name ?? '—'}
+                                                        </p>
+                                                        <p className="truncate text-xs text-muted-foreground">
+                                                            {user.email}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 font-mono text-xs">
+                                                {user.role}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <RateLimitForm user={user} />
+                                            </td>
+                                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                                                {user.created_at
+                                                    ? new Date(user.created_at).toLocaleDateString()
+                                                    : '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </CardContent>
+                    </Card>
 
                     {users.last_page > 1 && (
                         <nav
                             aria-label="Pagination"
-                            className="mt-4 flex flex-wrap gap-1 justify-center"
+                            className="flex flex-wrap justify-center gap-1"
+                            data-testid="pagination"
                         >
                             {users.links.map((link, idx) => (
                                 <a
@@ -131,13 +158,17 @@ export default function AdminUsers({ users }: Props) {
                                     href={link.url ?? '#'}
                                     aria-disabled={!link.url}
                                     aria-current={link.active ? 'page' : undefined}
-                                    className={`px-3 py-1 text-xs rounded border ${
-                                        link.active
-                                            ? 'bg-slate-800 border-slate-700 text-slate-100'
-                                            : link.url
-                                              ? 'border-slate-800 text-slate-400 hover:text-slate-200'
-                                              : 'border-slate-900 text-slate-700 cursor-not-allowed'
-                                    }`}
+                                    className={cn(
+                                        'rounded-md border px-3 py-1 text-xs transition-colors',
+                                        link.active &&
+                                            'border-border bg-accent text-accent-foreground',
+                                        !link.active &&
+                                            link.url &&
+                                            'border-border text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                                        !link.url &&
+                                            'border-transparent text-muted-foreground/40 cursor-not-allowed',
+                                    )}
+                                    // Laravel paginator embeds &laquo;/&raquo; entities for next/prev.
                                     dangerouslySetInnerHTML={{ __html: link.label }}
                                 />
                             ))}
