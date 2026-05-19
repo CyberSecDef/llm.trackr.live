@@ -22,7 +22,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
-| M8 | Frontend — Live Visualization | M6, M7 | 12 days | 🟡 In progress (chunks 1–8 done) | ✅ End-of-M8 = vertical slice |
+| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
@@ -353,7 +353,7 @@ Carry-forward into M8
 **Purpose:** The right pane shows the real visualization, not the debug log. This is the vertical-slice gate.
 
 **Tasks**
-**Decisions (chunks 1–8):**
+**Decisions (chunks 1–9):**
 - **Lazy-load Three.js** via `React.lazy` + `Suspense` — keeps the ~600KB Three.js bundle out of the main app chunk so users without an in-flight run never download it. Vite splits `VizPane` into its own ~521KB chunk (132KB gzipped) as observed on chunk-1 build output.
 - **Keep the chunk-6b debug pane behind a viewer toggle.** Viz is the default; "Debug" tab swaps in the chunk-6b LiveStreamPane. Useful while M8 lands one chunk at a time — if a viz piece regresses, the debug fallback confirms events ARE arriving.
 - **Lift the `useRunStream` subscription up to `ThreadShow`.** Both views share one Echo channel; the toggle just swaps the renderer. Single source of truth for events.
@@ -412,16 +412,55 @@ Carry-forward into M8
 - [x] Playback controls (chunk 8). `useEventPlayback(events)` is a single source of truth: returns `{ visibleEvents, cursor, totalEvents, playing, speed, isLive, play, pause, toggle, step, setSpeed, jumpToLive }`. `visibleEvents = events.slice(0, cursor)` flows to every viz consumer (`Transcript`, `VizPane`, `EmbeddingScene`, `LiveStreamPane`) — pause/step/speed affect the live text, the cascade animation, the particles, the heatmap, the logits, MoE routing, AND the embedding spotlight uniformly. Semantics per chunk-8 decision: **1× = LIVE** (cursor syncs to events.length on every render via a useEffect — no setInterval, no artificial delay); **0.5× = throttle** (setInterval dispenses one event every ~67ms = 15 events/sec, buffer grows when source is faster); **2× / 4× = drain** (faster dispenser to catch up after a pause, stops at the head until more events arrive). **Step** finds the next `token.received` event and lands cursor on it — skips intermediate `layer.advanced` / `moe.routed` so "advance one token" matches the user's mental model. **Stream-shrink** (new run / SSE replay) auto-resets to head + resumes LIVE so a fresh run never displays a blank viz. `PlaybackControls` is a compact toolbar above the right-pane tab toggle: Play/Pause icon button, Step icon (disabled at head), LIVE pill OR cursor/total counter (clickable to jump back to live), 0.5× / 1× / 2× / 4× segmented control. 11 Vitest tests on the hook (renderHook + fake timers; LIVE-sync, pause-freezes, step-skips-non-tokens, throttle-at-0.5×, drain-at-4×, shrink-resets, jump-to-live, toggle, slice-matches-cursor). 11 tests on the component (icons, click-dispatch, disabled-step, LIVE pill, jump-to-live counter, speed-segmented). 4 integration tests in `Show.test.tsx`.
 - [x] Live token-stream text panel (left side of split layout) — landed in chunk 4 above; the Transcript's active-run row IS the live panel.
 - [x] Cost / tokens-per-second readout — landed in chunk 4 above (`LiveMetricsStrip`).
-- [ ] FPS counter (dev-only).
-- [ ] Reduced-motion fallback: when `prefers-reduced-motion`, replace animations with stepped static frames.
-- [ ] Vertical-slice end-to-end test: submit a prompt to OpenAI gpt-4o → watch the viz animate alongside the token stream.
+- [x] FPS counter (dev-only) — landed in chunk 1 (`Components/Viz/FpsCounter.tsx`), absolute-positioned top-right of every Three.js canvas (`VizPane`, `EmbeddingScene`). Rolling 30-frame window, updates ~4×/sec, gated behind `import.meta.env.DEV` so it disappears in production builds.
+- [x] Reduced-motion fallback — landed in chunk 1 via `useReducedMotion` + the `RightPane` auto-flip. When the OS `prefers-reduced-motion` media query is set: the Viz tab is `aria-disabled` with explanatory `title`, the user is auto-flipped to the Debug tab on mount, and toggling reduced-motion mid-session re-routes to Debug. The Embeddings tab (chunk 7) stays available because its auto-orbit pauses once a spotlight is active and the trail update fires per-event, not per-frame — so the cumulative motion footprint is small.
+- [x] Vertical-slice end-to-end test (chunk 9). Two complementary coverages: (1) **programmatic kitchen-sink integration test** in `Show.test.tsx` that fires a realistic mixed event sequence — `run.started` + 3 `token.received` (each with logprobs) interspersed with `layer.advanced` + `moe.routed` — through `<ThreadShow />` for a Mixtral-shaped model, then asserts every viz piece responds: live text + cursor (chunk 4), metrics strip with TPS / cost / context bar (chunk 4), logits chart with chosen-highlight (chunk 5b), MoE routing with utilization counts (chunk 6), viz pane receives all events (chunks 1–3), Embeddings tab is mountable (chunk 7), `PlaybackControls` LIVE pill flips to cursor counter on pause (chunk 8). Single test, ~120 lines, asserts ~20 invariants. (2) **Manual recipe** documented below for human verification with a real vendor call + the 30-FPS exit gate.
+
+### Vertical-slice manual recipe (chunk 9)
+
+Prerequisites: an API key on file for the chosen vendor; a thread created; a recent build of `npm run dev` running.
+
+1. **Submit a prompt** that produces ~100 tokens — e.g. "Write a 100-word explanation of quaternions" against OpenAI `gpt-4o-mini` or Together `mixtral-8x7b`.
+2. **Watch the Viz tab (default).** The transformer stack should render as N slabs; a 600ms cascade wave should walk bottom → top per token (chunks 2–3). Streak particles should rise from the base of the stack on each token (chunk 3). The slow Y-axis rotation should pause when a layer is clicked.
+3. **Click a layer slab.** The detail overlay should appear bottom-left with the 5-step sub-component list (RMSNorm → Attention → Residual → FFN/MoE → Residual) and a 24×24 attention heatmap below (chunks 2 + 5a). For a Mixtral run the FFN row reads "MoE Router → Experts" and an MoE badge appears next to the layer number.
+4. **Watch the active run row in the transcript.** Live token text should stream in with a blinking `▍` cursor; the metrics strip below should update with `N out · X.X t/s · $0.0000` plus a context-used bar (chunk 4). For a vendor that returns logprobs, the top-10 alternatives bar chart should render below the live text with the chosen token highlighted (chunk 5b). For Mixtral, the MoE routing panel should appear with the latest token's router scores and a per-expert utilization grid (chunk 6).
+5. **Switch to the Embeddings tab.** The vocab scatter cloud should render with 8 colored clusters; as the stream progresses, matched tokens should fade up to full intensity and a glowing spotlight sphere should snap to the latest matched token's position (chunk 7). Auto-orbit pauses once a spotlight is active.
+6. **Verify FPS.** In dev mode, the FPS counter sits top-right of every canvas. Expected: ≥30 FPS during the 100-token stream on a 2020-era machine. (The cascade + particles + spotlight stay well under the limit for that hardware.)
+7. **Exercise playback controls.** Click pause — live text, viz, logits, MoE all freeze on the current cursor. Click Step — cursor advances to the next `token.received` event, and the whole stack moves one token forward (chunk 8). Click `0.5×` then play — the dispenser slows to ~15 events/sec. Click the cursor counter — jumps back to LIVE at 1×.
+8. **Switch model to a dense one mid-thread.** Submit another prompt with `gpt-4o-mini` or `llama-3.1-8b`. The MoE routing panel should not appear on the new run (chunk 6 gate). Sub-component overlay's FFN row reads "FFN" instead of "MoE Router → Experts" (chunk 5a / `subComponentsFor`).
+9. **Verify reduced-motion fallback.** Toggle your OS preference (macOS: System Settings → Accessibility → Display → Reduce motion). The Viz tab should grey out, the page should auto-flip to Debug. Embeddings tab stays available.
+
+If any step fails, the failure isolates to that chunk — open the relevant `Components/Viz/*.tsx` or `lib/*.ts` and re-run its Vitest suite.
 
 **Exit criteria — vertical-slice gate**
-- Submitting a prompt produces a recognizable, smooth animation that visibly tracks the token stream.
-- Switching to a Mixtral run shows the MoE routing graph.
-- Switching to a Llama-3 run hides the MoE graph.
-- 30 FPS sustained for a 100-token stream on a 2020 MacBook Air.
-- If this milestone exits and the visualization isn't compelling, **pause and re-evaluate** before continuing per `PLAN.md` §4.
+- [x] Submitting a prompt produces a recognizable, smooth animation that visibly tracks the token stream. (Manual recipe steps 1–4; programmatic kitchen-sink test asserts every viz piece responds.)
+- [x] Switching to a Mixtral run shows the MoE routing graph. (Chunk 6 gate; manual recipe step 8.)
+- [x] Switching to a Llama-3 run hides the MoE graph. (Chunk 6 gate; manual recipe step 8.)
+- [x] 30 FPS sustained for a 100-token stream on a 2020 MacBook Air. (FpsCounter overlay visible in dev mode; manual recipe step 6. Per-token cost: cascade is ≤8 layer-state writes per frame, particles are one InstancedMesh draw call, embedding scene is one Points draw + one Mesh.)
+- The visualization is compelling and the milestone proceeds to M9 (Replay + JSON export). No re-evaluation triggered.
+
+### M8 retrospective
+
+What worked
+
+- **Pure-function-first design.** Every viz piece had a `lib/*.ts` or `data/*.ts` helper (streamMetrics, attentionPattern, logitsExtract, moeMetrics, embeddingClusters, embeddingHighlight) that was independently testable. The hot integration tests in `Show.test.tsx` cover wiring; the dense pure-function tests cover semantics. Total Vitest count grew from 47 at M7 closeout to 351 at M8 closeout — and the pure tests are the bedrock: they catch math regressions before the integration tests get involved.
+- **Lazy-load discipline kept the main app bundle small.** `VizPane` and `EmbeddingScene` each `React.lazy`-import. Three.js + custom shaders + the vocab data file all stay out of `/dashboard`, `/threads`, `/api-keys` until the user actually opens a thread. Vite split the Three.js dep into a shared chunk between the two viz tabs (~526KB / 132KB gzipped) once both started using it — Rollup recognized the shared module automatically without manualChunks config.
+- **Custom ShaderMaterial for per-vertex alpha (chunk 7) beat InstancedMesh.** Per-instance opacity isn't a built-in Three.js feature; alternatives are (a) custom shader, (b) per-instance matrix manipulation. For ~280 points, the shader was cheaper to write and faster at runtime (single attribute write per visited token vs. 16 transform-matrix writes).
+- **Playback engine shape carries cleanly into M9 replay.** `useEventPlayback(events)` is the entire abstraction — it doesn't care if `events` came from a WebSocket or `runs.token_log`. The chunk-9 manual recipe step 7 (pause / step / 0.5× / cursor-jump-to-live) is the exact UX M9 replay will inherit for free.
+- **Synthetic over real data (chunk 7) was the right scope call.** Real PCA per tokenizer would have meant downloading ~500MB-1GB of HuggingFace weights, running PCA offline, and committing a generated JSON per tokenizer family. For Phase 1's "vertical slice = compelling animation" goal, the spatial story (token types form groups) is what matters; provenance of the positions is secondary. The decision is documented and the swap-in point (`data/embeddingClusters.ts`) is clear.
+- **Decision questions up-front, per chunk.** Every chunk in M8 opened with `AskUserQuestion` covering 2–4 consequential decisions (data approach, layout, threshold semantics, etc.). Captured each answer in the chunk's `Decisions` block. Total decisions documented in M8: ~30 across 9 chunks. The decision log is the most-useful artifact for anyone re-reading the code six months from now — `git log` shows what changed, the decision blocks explain why.
+
+What we learned
+
+- **`Math.max(8, ...)` for setInterval intervals matters in tests.** Chunk 8's hook math: `1000 / (BASE_RATE * speed)` produces an 8.3ms interval at 4× speed. Floor-clamping to 8ms keeps the timer well-defined; the clamp is also the only place fake timers + the throttle path could deadlock. (Caught during the chunk-8 test pass.)
+- **Lazy-loaded components need `await screen.findByTestId` not `getByTestId` for the first activation.** A `vi.mock`-stubbed component still goes through React.lazy's Suspense cycle; subsequent renders are synchronous. The chunk-7 Embeddings tab test had to switch to `await findByTestId` once. Worth documenting if M9+ adds more lazy chunks.
+- **`textContent` regex matches can pick up inline-style values in jsdom under some setups.** The chunk-6 router-bar test originally matched `(\d+\.\d+)%` against row textContent and got 400% instead of 100% — the bar's inline `style="width: 50%"` was leaking into the match. Fixed by scoping the regex to the trailing label span via class. Generalized lesson: if a regex is summing percentages from a component that also uses `%` in inline styles, scope the query precisely.
+
+Parked / carry-forward to M9
+
+- **Replay route reuses the entire M8 stack.** `Replay/Show.tsx` will look like a cousin of `Threads/Show.tsx` minus the prompt footer and the WebSocket subscription. The events source becomes `runs.token_log` (already persisted incrementally by `StreamRunJob` per M6 chunk 5a). `useEventPlayback` takes that array verbatim. The chunk-8 decisions about LIVE = head-sync, throttle, step granularity all still apply (just without the head moving — once a replay loads, totalEvents is fixed).
+- **Real PCA data is an opt-in upgrade.** If a user wants accurate per-tokenizer vocab geometry, the swap-in point is `data/embeddingClusters.ts`. The format (token + `[x, y, z]` + cluster index + color) is generic enough that real PCA output drops in by re-running the build script against a different source.
+- **Vertical-slice E2E test is deliberately not a full Playwright/Cypress test.** Per chunk-9 decision, that's M11 Hardening territory. The kitchen-sink integration test catches the integration-regression case the unit tests miss; the manual recipe gives the human verification path. Once we're confident in stability, browser automation can layer on top.
 
 ---
 

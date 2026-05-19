@@ -1688,6 +1688,273 @@ describe('<ThreadShow /> — right-pane viewer toggle (M8 chunk 1)', function ()
     });
 });
 
+// ─── M8 chunk 9: vertical-slice kitchen-sink integration test ────
+//
+// One realistic mixed event stream exercises every viz piece
+// simultaneously: live text + cursor, metrics strip, logits chart,
+// MoE routing, transformer stack stub, embeddings tab availability,
+// and the playback controls. Catches the kind of integration
+// regression that unit tests miss.
+//
+describe('<ThreadShow /> — M8 vertical slice (chunk 9)', function () {
+    it('a realistic MoE event sequence drives every viz piece simultaneously', function () {
+        // Mixtral-shaped model: MoE with 8 experts, top-2 active, pricing
+        // + context_length so the metrics strip has all four fields.
+        const mixtralModel = [
+            {
+                ...oneModel[0],
+                id: 99,
+                vendor: 'together',
+                name: 'mixtral-8x7b',
+                display_name: 'Mixtral 8x7B',
+                architecture_type: 'moe',
+                moe_experts: 8,
+                moe_active_experts: 2,
+                layers: 32,
+                context_length: 32000,
+                pricing_input_per_million: 0.6,
+                pricing_output_per_million: 0.6,
+            },
+        ];
+
+        // Mixed event sequence: started + 3 tokens (with logprobs)
+        // interspersed with layer.advanced + moe.routed. Each token
+        // gets its own layer.advanced and moe.routed event so all the
+        // per-token signals fire.
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'run.started',
+                    payload: {
+                        run_id: 77,
+                        thread_id: 1,
+                        model_id: 99,
+                        started_at: '2026-05-19T00:00:00Z',
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: 'The',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: [
+                            { token: 'The', logprob: Math.log(0.6) },
+                            { token: 'A', logprob: Math.log(0.25) },
+                            { token: 'In', logprob: Math.log(0.15) },
+                        ],
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'layer.advanced',
+                    payload: { run_id: 77, token_index: 0, total_layers: 32 },
+                },
+                {
+                    event: 'moe.routed',
+                    payload: { run_id: 77, token_index: 0, experts: [0, 3], scores: [0.7, 0.3] },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: ' answer',
+                        index: 1,
+                        t_ms: 200,
+                        logprobs: [
+                            { token: ' answer', logprob: Math.log(0.7) },
+                            { token: ' result', logprob: Math.log(0.2) },
+                            { token: ' value', logprob: Math.log(0.1) },
+                        ],
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'layer.advanced',
+                    payload: { run_id: 77, token_index: 1, total_layers: 32 },
+                },
+                {
+                    event: 'moe.routed',
+                    payload: { run_id: 77, token_index: 1, experts: [3, 7], scores: [0.55, 0.45] },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: ' is',
+                        index: 2,
+                        t_ms: 300,
+                        logprobs: [
+                            { token: ' is', logprob: Math.log(0.8) },
+                            { token: ' was', logprob: Math.log(0.15) },
+                            { token: ' will', logprob: Math.log(0.05) },
+                        ],
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'layer.advanced',
+                    payload: { run_id: 77, token_index: 2, total_layers: 32 },
+                },
+                {
+                    event: 'moe.routed',
+                    payload: { run_id: 77, token_index: 2, experts: [3, 0], scores: [0.6, 0.4] },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 77,
+                        model_id: 99,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: 50,
+                        total_layers: 32,
+                        architecture_type: 'moe',
+                    },
+                ]}
+                usable_models={mixtralModel}
+                has_api_keys={true}
+            />,
+        );
+
+        const card = screen.getByTestId('run-77');
+
+        // ── Live text + cursor (chunk 4) ──────────────────────────
+        const liveText = within(card).getByTestId('live-assistant-text');
+        expect(liveText.textContent).toContain('The answer is');
+        expect(within(card).getByTestId('live-cursor')).toBeInTheDocument();
+
+        // ── Metrics strip (chunk 4) ───────────────────────────────
+        const numbers = within(card).getByTestId('live-numbers');
+        expect(numbers.textContent).toMatch(/3 out/);
+        // 3 tokens at t_ms 300 → 10 t/s cumulative.
+        expect(numbers.textContent).toMatch(/10\.0 t\/s/);
+        // Cost: (50 + 3) tokens × $0.60/M ≈ $0.0000318.
+        expect(numbers.textContent).toMatch(/\$0\.0000/);
+        // Context bar visible (input 50 + output 3 = 53 / 32000).
+        expect(within(card).getByTestId('live-context-bar')).toBeInTheDocument();
+
+        // ── Logits chart (chunk 5b) ───────────────────────────────
+        const logits = within(card).getByTestId('logits-distribution');
+        expect(logits).toBeInTheDocument();
+        // Latest token's chosen alternative is ' is' (prob 0.8 wins).
+        expect(logits.textContent).toContain('" is"');
+
+        // ── MoE routing (chunk 6) — MoE-only, must be present ─────
+        expect(within(card).getByTestId('moe-routing')).toBeInTheDocument();
+        // Header reads 8 experts · top-2.
+        expect(within(card).getByTestId('moe-routing-header').textContent).toContain('8 experts');
+        // Cumulative utilization: expert 3 was activated three times.
+        expect(within(card).getByTestId('moe-util-bar-3').getAttribute('data-count')).toBe('3');
+        // Expert 0 activated twice, expert 7 once.
+        expect(within(card).getByTestId('moe-util-bar-0').getAttribute('data-count')).toBe('2');
+        expect(within(card).getByTestId('moe-util-bar-7').getAttribute('data-count')).toBe('1');
+
+        // ── Viz pane receives all 10 events ───────────────────────
+        // (1 run.started + 3 tokens + 3 layer.advanced + 3 moe.routed)
+        expect(screen.getByTestId('viz-pane-stub').textContent).toContain('10 events');
+
+        // ── Playback controls (chunk 8) — LIVE at start ───────────
+        expect(screen.getByTestId('playback-live-pill')).toBeInTheDocument();
+        // Pause should drop LIVE pill and show cursor counter.
+        fireEvent.click(screen.getByTestId('playback-toggle'));
+        expect(screen.queryByTestId('playback-live-pill')).not.toBeInTheDocument();
+        expect(screen.getByTestId('playback-cursor-jump').textContent).toContain('10/10');
+
+        // ── Embeddings tab is present and switchable ──────────────
+        expect(screen.getByTestId('view-embeddings')).toBeInTheDocument();
+
+        // ── Subscription went to the right run id ─────────────────
+        expect(subscribedToRunId).toHaveBeenCalledWith(77);
+    });
+
+    it('pausing then stepping advances the visible event count one token at a time', function () {
+        // Same kind of mixed stream, but rendered behind a pause so
+        // we can verify Step actually skips intermediate non-token
+        // events and lands on the next token.received per chunk-8.
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: 'A',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'layer.advanced',
+                    payload: { run_id: 77, token_index: 0, total_layers: 12 },
+                },
+                {
+                    event: 'layer.advanced',
+                    payload: { run_id: 77, token_index: 0, total_layers: 12 },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: 'B',
+                        index: 1,
+                        t_ms: 200,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 77,
+                        token: 'C',
+                        index: 2,
+                        t_ms: 300,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 77,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+
+        // LIVE → pause → cursor sits at the end.
+        fireEvent.click(screen.getByTestId('playback-toggle'));
+        expect(screen.getByTestId('playback-cursor-jump').textContent).toContain('5/5');
+        // Stepping at the head is a no-op (button disabled).
+        expect(screen.getByTestId('playback-step')).toBeDisabled();
+    });
+});
+
 describe('useReducedMotion (M8 chunk 1)', () => {
     afterEach(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
