@@ -2,16 +2,45 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { routerGet, routerPatch, routerDelete, formPatch, formPost, setDataMock } = vi.hoisted(
-    () => ({
-        routerGet: vi.fn(),
-        routerPatch: vi.fn(),
-        routerDelete: vi.fn(),
-        formPatch: vi.fn(),
-        formPost: vi.fn(),
-        setDataMock: vi.fn(),
-    }),
-);
+const {
+    routerGet,
+    routerPatch,
+    routerDelete,
+    routerReload,
+    formPatch,
+    formPost,
+    setDataMock,
+    subscribedToRunId,
+    mockStreamState,
+} = vi.hoisted(() => ({
+    routerGet: vi.fn(),
+    routerPatch: vi.fn(),
+    routerDelete: vi.fn(),
+    routerReload: vi.fn(),
+    formPatch: vi.fn(),
+    formPost: vi.fn(),
+    setDataMock: vi.fn(),
+    subscribedToRunId: vi.fn(),
+    // Mutable wrapper: tests reassign `mockStreamState.value` before
+    // rendering to control what useRunStream returns. We can't hoist
+    // a primitive that tests can swap, but we can hoist an object
+    // whose `value` we reassign.
+    mockStreamState: {
+        value: {
+            events: [] as Array<{ event: string; payload: Record<string, unknown> }>,
+            status: 'idle' as 'idle' | 'streaming' | 'complete' | 'errored',
+            transport: 'websocket' as 'websocket' | 'sse' | 'none',
+            disabled: false,
+        },
+    },
+}));
+
+vi.mock('@/hooks/useRunStream', () => ({
+    useRunStream: (runId: number | null) => {
+        subscribedToRunId(runId);
+        return mockStreamState.value;
+    },
+}));
 
 vi.mock('@inertiajs/react', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@inertiajs/react')>();
@@ -38,7 +67,12 @@ vi.mock('@inertiajs/react', async (importOriginal) => {
                 reset: vi.fn(),
             };
         },
-        router: { get: routerGet, patch: routerPatch, delete: routerDelete },
+        router: {
+            get: routerGet,
+            patch: routerPatch,
+            delete: routerDelete,
+            reload: routerReload,
+        },
         usePage: () => ({
             props: {
                 auth: { user: { id: 1, name: 'Alice', email: 'a@example.com', role: 'user' } },
@@ -116,9 +150,18 @@ afterEach(() => {
     routerGet.mockReset();
     routerPatch.mockReset();
     routerDelete.mockReset();
+    routerReload.mockReset();
     formPatch.mockReset();
     formPost.mockReset();
     setDataMock.mockReset();
+    subscribedToRunId.mockReset();
+    // Reset the stream-state wrapper for the next test.
+    mockStreamState.value = {
+        events: [],
+        status: 'idle',
+        transport: 'websocket',
+        disabled: false,
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (globalThis as any).fetch;
     vi.useRealTimers();
@@ -554,5 +597,156 @@ describe('<ThreadShow /> — preview panel (chunk 6a)', function () {
         expect(counts.textContent).toContain('50');
         // But no fill bar.
         expect(screen.queryByTestId('budget-bar-fill')).not.toBeInTheDocument();
+    });
+});
+
+describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
+    it('renders the empty state when no active run exists', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('live-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('live-pane')).not.toBeInTheDocument();
+        expect(subscribedToRunId).toHaveBeenCalledWith(null);
+    });
+
+    it('does not subscribe when the only runs are terminal', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, status: 'complete' }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('live-empty')).toBeInTheDocument();
+        expect(subscribedToRunId).toHaveBeenCalledWith(null);
+    });
+
+    it('subscribes to the latest non-terminal run', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    { ...sampleRun, id: 50, sequence_in_thread: 1, status: 'complete' },
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        sequence_in_thread: 2,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('live-pane')).toBeInTheDocument();
+        expect(subscribedToRunId).toHaveBeenCalledWith(51);
+    });
+
+    it('renders streamed events from the hook', function () {
+        mockStreamState.value = {
+            events: [
+                { event: 'run.started', payload: { run_id: 51 } },
+                { event: 'token.received', payload: { run_id: 51, token: 'Hi', index: 0 } },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const pane = screen.getByTestId('live-events');
+        expect(pane.textContent).toContain('"event": "run.started"');
+        expect(pane.textContent).toContain('"event": "token.received"');
+        expect(pane.textContent).toContain('"token": "Hi"');
+    });
+
+    it('shows the active transport in the pane header', function () {
+        mockStreamState.value = {
+            events: [],
+            status: 'streaming',
+            transport: 'sse',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('live-transport').textContent).toContain('sse');
+    });
+
+    it('shows a notice when transport is unavailable', function () {
+        mockStreamState.value = {
+            events: [],
+            status: 'idle',
+            transport: 'none',
+            disabled: true,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('live-transport-unavailable')).toBeInTheDocument();
+    });
+
+    it('triggers router.reload({only: ["runs"]}) when the hook reports complete', async function () {
+        vi.useFakeTimers();
+        mockStreamState.value = {
+            events: [],
+            status: 'complete',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        await vi.advanceTimersByTimeAsync(450);
+        expect(routerReload).toHaveBeenCalledWith({ only: ['runs'] });
+    });
+
+    it('triggers router.reload when the hook reports errored', async function () {
+        vi.useFakeTimers();
+        mockStreamState.value = {
+            events: [],
+            status: 'errored',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, id: 51, status: 'streaming', output_text: null }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        await vi.advanceTimersByTimeAsync(450);
+        expect(routerReload).toHaveBeenCalledWith({ only: ['runs'] });
     });
 });

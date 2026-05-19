@@ -8,10 +8,12 @@ import {
     ChevronRight,
     KeyRound,
     Pencil,
+    Radio,
     Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
+import { useRunStream } from '@/hooks/useRunStream';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -100,21 +102,53 @@ const STATUS_CLASSES: Record<RunRow['status'], string> = {
     error: 'bg-destructive/20 text-destructive-foreground',
 };
 
+/**
+ * Pick the latest run in non-terminal status — that's the one a live
+ * stream pane should subscribe to. Returns null when nothing is
+ * actively in flight.
+ */
+function findActiveRun(runs: RunRow[]): RunRow | null {
+    // runs prop is ordered by sequence_in_thread asc (per the
+    // controller), so the latest by ID is the last one.
+    for (let i = runs.length - 1; i >= 0; i--) {
+        const run = runs[i];
+        if (run.status === 'pending' || run.status === 'streaming') {
+            return run;
+        }
+    }
+    return null;
+}
+
 export default function ThreadShow({ thread, runs, usable_models, has_api_keys }: ThreadShowProps) {
+    const activeRun = findActiveRun(runs);
+
     return (
         <>
             <Head title={thread.title || `Thread #${thread.id}`} />
             <AppLayout title="Thread">
-                <div className="p-6 md:p-8 max-w-5xl space-y-6">
+                <div className="p-6 md:p-8 max-w-7xl">
                     <BackLink />
-                    <ThreadHeader thread={thread} />
-                    <Transcript runs={runs} />
-                    <PromptFooter
-                        threadId={thread.id}
-                        usableModels={usable_models}
-                        hasApiKeys={has_api_keys}
-                        defaultModelId={thread.default_model_id}
-                    />
+                    {/* Desktop: 3-col grid with transcript+form spanning 2,
+                        live pane on the right. Mobile: single column. */}
+                    <div className="mt-4 grid gap-6 lg:grid-cols-3">
+                        <div className="lg:col-span-2 space-y-6 min-w-0">
+                            <ThreadHeader thread={thread} />
+                            <Transcript runs={runs} />
+                            <PromptFooter
+                                threadId={thread.id}
+                                usableModels={usable_models}
+                                hasApiKeys={has_api_keys}
+                                defaultModelId={thread.default_model_id}
+                            />
+                        </div>
+                        <aside
+                            aria-label="Live run stream"
+                            className="lg:sticky lg:top-6 lg:self-start"
+                            data-testid="live-stream-aside"
+                        >
+                            <LiveStreamPane activeRun={activeRun} />
+                        </aside>
+                    </div>
                 </div>
             </AppLayout>
         </>
@@ -688,5 +722,84 @@ function BudgetIndicator({ preview }: { preview: PromptPreviewResponse }) {
                 />
             </div>
         </div>
+    );
+}
+
+/**
+ * LiveStreamPane (M7 chunk 6b) — right-column live view of the
+ * currently-active run's broadcast events. Subscribes via
+ * useRunStream (WebSocket → SSE fallback from M6). When the run
+ * reaches a terminal status, partial-reloads the page so the
+ * transcript on the left picks up the final output_text + token
+ * counts; the pane then returns to its empty state until the next
+ * submit.
+ *
+ * The SPEC's M7 exit criterion is "see tokens stream into the debug
+ * pane on the right". M8 replaces this with the real visualization.
+ */
+function LiveStreamPane({ activeRun }: { activeRun: RunRow | null }) {
+    const { events, status, transport, disabled } = useRunStream(activeRun?.id ?? null);
+
+    // When the run terminates, refresh the runs prop so the transcript
+    // updates with the final state. A small delay so the user sees the
+    // closing event for a beat before the page repaints.
+    useEffect(() => {
+        if (status === 'complete' || status === 'errored') {
+            const handle = setTimeout(() => {
+                router.reload({ only: ['runs'] });
+            }, 400);
+            return () => clearTimeout(handle);
+        }
+    }, [status]);
+
+    if (!activeRun) {
+        return (
+            <Card className="border-dashed bg-card/30" data-testid="live-empty">
+                <CardContent className="p-4 text-center text-xs text-muted-foreground">
+                    Submit a prompt to see live token events here.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Card data-testid="live-pane">
+            <CardContent className="space-y-3 p-4">
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Run #{activeRun.sequence_in_thread} — live
+                    </p>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Radio
+                            className={cn(
+                                'h-3 w-3',
+                                status === 'streaming' && 'text-emerald-400 animate-pulse',
+                            )}
+                            aria-hidden="true"
+                        />
+                        {status}
+                    </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground" data-testid="live-transport">
+                    transport: {transport}
+                </p>
+                {disabled && (
+                    <p className="text-xs text-amber-400" data-testid="live-transport-unavailable">
+                        No realtime transport available. The transcript will refresh once the run
+                        completes.
+                    </p>
+                )}
+                <pre
+                    className="max-h-[50vh] overflow-auto rounded bg-muted/40 p-2 text-[11px] font-mono leading-relaxed text-foreground/90"
+                    data-testid="live-events"
+                >
+                    {events.length === 0
+                        ? '// waiting for events…'
+                        : events
+                              .map((e) => JSON.stringify({ event: e.event, ...e.payload }, null, 2))
+                              .join('\n\n')}
+                </pre>
+            </CardContent>
+        </Card>
     );
 }

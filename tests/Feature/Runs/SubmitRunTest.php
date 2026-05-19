@@ -269,3 +269,34 @@ describe('POST /threads/{thread}/runs — success', function () {
         Bus::assertDispatched(StreamRunJob::class);
     });
 });
+
+describe('POST /threads/{thread}/runs — Inertia dual-respond (M7 chunk 6b)', function () {
+    it('redirects to threads.show when the X-Inertia header is present', function () {
+        ['user' => $user, 'thread' => $thread, 'model' => $model] = submittableQuad();
+
+        Bus::fake();
+        $response = $this->actingAs($user)
+            ->withHeader('X-Inertia', 'true')
+            ->post("/threads/{$thread->id}/runs", [
+                'model_id' => $model->id,
+                'prompt' => 'hi from inertia',
+            ]);
+
+        $response->assertRedirect("/threads/{$thread->id}");
+        Bus::assertDispatched(StreamRunJob::class);
+    });
+
+    it('still returns the 201 JSON shape for non-Inertia (API) callers', function () {
+        ['user' => $user, 'thread' => $thread, 'model' => $model] = submittableQuad();
+
+        Bus::fake();
+        // postJson does NOT send X-Inertia; should hit the JSON branch.
+        $response = $this->actingAs($user)->postJson("/threads/{$thread->id}/runs", [
+            'model_id' => $model->id,
+            'prompt' => 'hi from api',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonStructure(['run' => ['id', 'status'], 'channel']);
+    });
+});

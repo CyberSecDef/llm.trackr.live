@@ -13,6 +13,8 @@ use App\Services\Threads\Exceptions\NoApiKeyException;
 use App\Services\Threads\Exceptions\ThreadOwnershipException;
 use App\Services\Threads\RunService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -32,7 +34,7 @@ class RunController extends Controller
 {
     public function __construct(private readonly RunService $runService) {}
 
-    public function store(SubmitRunRequest $request, Thread $thread): JsonResponse
+    public function store(SubmitRunRequest $request, Thread $thread): JsonResponse|RedirectResponse
     {
         $validated = $request->validated();
         $model = LlmModel::findOrFail($validated['model_id']);
@@ -72,6 +74,15 @@ class RunController extends Controller
 
         StreamRunJob::dispatch($run);
 
+        // Dual response: Inertia (`X-Inertia` header set by useForm.post)
+        // needs a redirect to trigger the page-reload that picks up the
+        // new run in the `runs` prop. Plain JSON / API callers (the
+        // existing chunk-4a test surface, future internal-API consumers)
+        // still get the 201 + run shape they expect.
+        if ($this->wantsInertiaRedirect($request)) {
+            return redirect()->route('threads.show', ['thread' => $thread->id]);
+        }
+
         return response()->json([
             'run' => [
                 'id' => $run->id,
@@ -83,5 +94,15 @@ class RunController extends Controller
             ],
             'channel' => "private-runs.{$run->id}",
         ], 201);
+    }
+
+    /**
+     * Inertia's useForm.post sets `X-Inertia: true`. Anything without
+     * that header (curl / postJson / future API token holder) gets
+     * the JSON branch.
+     */
+    private function wantsInertiaRedirect(Request $request): bool
+    {
+        return $request->header('X-Inertia') === 'true';
     }
 }
