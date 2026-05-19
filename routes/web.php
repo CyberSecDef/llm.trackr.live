@@ -6,6 +6,7 @@ use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\RunController;
+use App\Http\Controllers\RunEventsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
 use App\Models\User;
@@ -96,6 +97,12 @@ Route::middleware('auth')->group(function () {
     // the deployment sizing note.
     Route::get('runs/{run}/stream', [StreamRunController::class, 'stream'])
         ->name('runs.stream');
+
+    // JSON backfill for WS reconnects (M6 chunk 6). Cheap one-shot
+    // call the hook makes when pusher reconnects so the client can
+    // catch up on events missed during the disconnect window.
+    Route::get('runs/{run}/events', [RunEventsController::class, 'index'])
+        ->name('runs.events');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {

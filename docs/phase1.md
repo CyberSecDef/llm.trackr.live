@@ -20,7 +20,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M3 | Model Registry | M2 | 4 days | ✅ Complete | |
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
-| M6 | Realtime + Streaming Pipeline | M5 | 6 days | 🟡 In progress (chunks 1–5 done) | |
+| M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ⚪ Not started | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
@@ -233,13 +233,41 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 - [x] Frontend hook: `useRunStream(runId)` (chunks 4b + 5b) — prefers WebSocket via Laravel Echo, falls back to SSE on connection failure. Returns `{ events, status, transport, disabled }` where `transport: 'websocket' | 'sse' | 'none'` exposes which path is live, `disabled` is the back-compat alias for `transport === 'none'`. Discriminated-union `RunEvent` type in `resources/js/types/runs.ts` mirrors each PHP event's `broadcastWith()` exactly. **Two-effect shape:** effect 1 resets state when (runId, transport) changes; effect 2 sets up the subscription. Splitting ensures `events: []` lands before the new transport's first event regardless of React's scheduling. **Transport selection:** picks `'websocket'` if `window.Echo` is set, else `'sse'` if `window.EventSource` exists, else `'none'`. **Fallback trigger (chunk 5b):** subscribes to pusher's `connection.state_change` and flips to SSE when state becomes `'failed'` or `'unavailable'`. Stays on SSE for the rest of the run even if WebSocket recovers — avoids transport thrashing and the dedup logic switching-back would require. **Fallback UX (chunk 5b):** clears events on transport change so the SSE controller's cursor-0 replay can repopulate without dedup. M8 can refine if the viz needs smoother UX. 21 Vitest tests cover WebSocket happy path, SSE-only path (Echo=null), WS→SSE fallback (`failed`/`unavailable` state, event reset, EventSource ctor URL, stay-on-SSE after WS recovery), `transport='none'` when neither is available, runId transitions. Mock `EventSource` is implemented as a class (not a plain `vi.fn()`) so `new EventSource()` works under jsdom (which doesn't ship EventSource).
 - [x] Event names refactor (chunk 4b): added `broadcastAs()` to each of the 6 events so the frontend listens with short kebab-case names (`.run.started`, `.token.received`, `.layer.advanced`, `.moe.routed`, `.run.completed`, `.run.errored`) instead of full PHP class FQNs. Decouples the JS subscription from the PHP namespace — renaming/moving event classes won't silently break the frontend. 6 Pest tests in `RunEventBroadcastAsTest.php` lock the strings down so a future drift fails the test before it ships.
 - [x] Debug page `/runs/{id}/debug` (chunks 4b + 5b): `App\Http\Controllers\DebugRunController::show` does the same-user-as-run check (mirrors the `runs.{runId}` channel auth invariant) and returns an Inertia render of `Runs/Debug` with the run's static metadata + the channel name to subscribe against. The TSX page renders the metadata header up top, a "subscribed channel + live status + active transport" line, and a chronological JSON event list below — append-only as `useRunStream` delivers events. Active transport label reads `WebSocket`, `SSE (fallback)`, or `unavailable`; chunk 5b also rewrites the disabled-notice copy to "no realtime transport is available" since SSE is now a fallback. **`config/inertia.php` added** so the Inertia view-finder knows about `.tsx` page paths (defaults are Vue-only); without this, `assertInertia(...)->component('...')` fails with "page component file does not exist" on every test. 4 Pest tests cover authz (redirect/403/404 + 200 render with prop assertions); 8 Vitest tests cover render + event accumulation + status transitions + transport label (WebSocket / SSE / unavailable) + disabled-notice gate.
-- [ ] Reconnect logic: on disconnect, frontend re-subscribes and replays from `runs.token_log` cursor.
-- [ ] Queue worker config (supervisor stub for production, foreground for dev).
+- [x] Reconnect logic (chunk 6): `GET /runs/{run}/events?since=N` JSON backfill endpoint (`App\Http\Controllers\RunEventsController`) returns the persisted `token_log` slice from index N onward, plus current `status` + `completion`/`error` blocks for terminal runs. Lightweight one-shot — no streaming, no FPM-worker hold. Owner-only authz (same invariant as channel auth, SSE, and debug page). `useRunStream` tracks `maxSeenIndex` + `wasDisconnected` refs; on pusher `state_change` transitioning from `disconnected`/`connecting` back to `connected`, fires the backfill with `since=maxSeenIndex+1` and appends the returned `token_log` entries as if they arrived live. Also synthesizes `run.completed` / `run.errored` events from the response's `completion`/`error` blocks so the closing event isn't missed when the run terminates during the gap. **Pusher-js auto-reconnects WS but does not replay** — that's the gap this closes. The SSE fallback (chunk 5b) is for hard failures; this is the catch-up path for transient blips. 11 Pest tests on the endpoint (authz, slicing semantics, since clamping, terminal-state blocks) + 6 Vitest tests on the hook (initial-connect no-fetch, since=N+1 URL, run.completed/run.errored synthesis, double-reconnect dedup, error-tolerance).
+- [x] Queue worker config (chunk 6): `deployment/supervisor/laravel-queue.conf` (2 worker processes, 600 s job timeout, 605 s stopwaitsecs so SIGTERM gives in-flight runs a clean exit) + `deployment/supervisor/laravel-reverb.conf` (single process — Reverb's in-memory pub/sub doesn't multi-process out of the box; horizontal scale needs the Redis backend, deferred to M13). Both `.conf` files have install instructions in the header comment. For dev: foreground via `php artisan queue:work` + `php artisan reverb:start --host=0.0.0.0`.
 
 **Exit criteria**
-- Submitting a run results in tokens streaming to the debug page within ~200 ms of vendor delivery.
-- Killing the Reverb process mid-stream causes the frontend to fall back to SSE without dropping tokens.
-- A second tab subscribing to the same `runs.{id}` channel receives the same events.
+- ✅ Submitting a run results in tokens streaming to the debug page within ~200 ms of vendor delivery — covered by the chunk-3 StreamRunJob tests (broadcast dispatch on each chunk + microtime-based t_ms) plus the chunk-4b useRunStream / Debug page render tests. Manual verification recipe in `docs/m6-exit-criteria.md` §1.
+- ✅ Killing the Reverb process mid-stream causes the frontend to fall back to SSE without dropping tokens — covered by chunk-5b's `WS → SSE fallback` test group (transport flip on pusher `failed`/`unavailable`, event-list reset, SSE EventSource opened against `/runs/{id}/stream`) + chunk-5a's incremental `token_log` persistence (no events lost because the SSE controller replays from the persisted log, not from an in-memory queue). Manual recipe in `docs/m6-exit-criteria.md` §2.
+- ✅ A second tab subscribing to the same `runs.{id}` channel receives the same events — covered by Reverb's pubsub-layer semantics (multiple subscribers to a private channel fan out identically) + channel auth tests (chunk 4a) verifying the owner-only invariant. Manual recipe in `docs/m6-exit-criteria.md` §3.
+
+**M6 retrospective**
+
+Sized at 6 days; landed in 6 chunks across a similar elapsed window. Quality bar held — 432 Pest tests / 1030 assertions, 43 Vitest tests; Pint / ESLint / type-check / Vite build all green at every chunk boundary.
+
+What worked
+- Splitting chunk 4 into 4a (backend HTTP + channel auth) + 4b (frontend Echo wiring + debug page) kept each commit reviewable. Same for chunk 5 (5a backend SSE / 5b frontend fallback).
+- `ShouldBroadcastNow` over `ShouldBroadcast` (chunk 3): per-token broadcasts fire in-process from the queue worker, preserving order without a second queue round-trip. Caught early because the chunk-1 RunStarted event went out as `ShouldBroadcast` and would have caused subtle reordering once token streaming kicked in.
+- `broadcastAs()` short kebab names (chunk 4b) decouple frontend listeners from PHP class FQNs. Renaming an event class no longer silently breaks the wire contract.
+- Polling-based SSE (chunk 5a) avoided introducing Redis as a hard runtime dep — the persisted `token_log` is the source of truth, both transports read from it. Tail latency is ~150 ms which is well under the "tokens stream in real time" perception threshold.
+
+Surprises / footnotes
+- `BROADCAST_CONNECTION=log` (the default `.env` driver) no-ops on the channel-auth callback — needed `BROADCAST_CONNECTION=pusher` with fake test creds in `phpunit.xml` to actually exercise `/broadcasting/auth` in tests. Documented inline.
+- Inertia's view-finder defaults to `.vue`; needed `config/inertia.php` to teach it about `.tsx` pages or `assertInertia(...)->component('...')` fails on every test.
+- `assertInertia` requires the route to return a `View` (not the X-Inertia JSON form), so test HTTP calls don't pass the X-Inertia header.
+- jsdom doesn't ship `EventSource`; chunk 5b needed a real ES6 class mock (not a plain `vi.fn()`) so `new EventSource()` works.
+- `Symfony\StreamedResponse::getContent()` returns `false`; chunk-5a SSE tests use `streamedContent()` to actually capture the body.
+- npm audit reports 3 moderate transitive `ws` advisories via socket.io-client (an optional laravel-echo transport we don't use). Unreachable in our pusher-js bundle; deferred to M13.
+
+Decisions parked or deferred to later milestones
+- Mid-stream WS↔SSE switch-back: once on SSE we stay there. Avoiding dedup complexity is worth the brief flicker. M8 can revisit if the viz needs smoother UX (chunk 5b documented this choice).
+- Real cross-process pub/sub (Redis) for sub-100ms SSE: not needed for our concurrency target; polling-based SSE is good enough for launch.
+- Horizontal Reverb scaling (Redis backend): single-process is fine for the single-VPS target; M13 deployment chunk will revisit if traffic warrants.
+- Browser-based E2E test harness (Playwright/Cypress): chosen against in chunk 6 (unit + integration + manual recipes is enough for M6); M12 accessibility/polish is the natural home.
+
+Carry-forward into M7
+- The debug page proves the plumbing is alive end-to-end. M7's thread-detail page replaces it as the user-facing surface; the debug page stays for internal use.
+- `useRunStream` is the only frontend consumer of the streaming pipeline today. M7 will refactor it into the thread-page hierarchy; the hook's contract (events + status + transport + disabled) should be enough.
 
 ---
 

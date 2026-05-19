@@ -399,3 +399,196 @@ describe('useRunStream — runId changes', function () {
         expect(result.current.status).toBe('idle');
     });
 });
+
+describe('useRunStream — WebSocket reconnect backfill', function () {
+    // Track the most recent fetch call so each test can wait on its promise.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let fetchResolve: ((value: any) => void) | null = null;
+
+    beforeEach(() => {
+        fetchResolve = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn(
+            () =>
+                new Promise((resolve) => {
+                    fetchResolve = resolve;
+                }),
+        );
+    });
+
+    afterEach(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (globalThis as any).fetch;
+    });
+
+    function fakeOk(body: object) {
+        return {
+            ok: true,
+            json: async () => body,
+        };
+    }
+
+    it('does not backfill on the initial connected state', async function () {
+        renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const connection = (window as any).Echo.__connection;
+
+        // Pusher's first state_change is initial -> connected; wasDisconnected
+        // is false, so no backfill should fire.
+        act(() => connection.fire('connected'));
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((globalThis as any).fetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches /runs/{id}/events?since=N+1 when reconnecting after a disconnect', async function () {
+        const { result } = renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const echo = (window as any).Echo;
+
+        // Receive a couple of tokens via WS so the cursor advances.
+        act(() => {
+            echo.__channel.trigger('.token.received', { run_id: 42, index: 0, token: 'a' });
+            echo.__channel.trigger('.token.received', { run_id: 42, index: 1, token: 'b' });
+        });
+
+        // Pusher drops, then reconnects.
+        act(() => {
+            echo.__connection.fire('disconnected');
+            echo.__connection.fire('connected');
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((globalThis as any).fetch).toHaveBeenCalledWith(
+            '/runs/42/events?since=2',
+            expect.objectContaining({ credentials: 'same-origin' }),
+        );
+
+        // Resolve the backfill with two new entries.
+        await act(async () => {
+            fetchResolve!(
+                fakeOk({
+                    run_id: 42,
+                    status: 'streaming',
+                    since: 2,
+                    cursor: 4,
+                    token_log: [
+                        { token: 'c', index: 2, t_ms: 30, logprobs: null },
+                        { token: 'd', index: 3, t_ms: 40, logprobs: null },
+                    ],
+                    completion: null,
+                    error: null,
+                }),
+            );
+        });
+
+        expect(result.current.events).toHaveLength(4);
+        expect(result.current.events[2].event).toBe('token.received');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((result.current.events[2].payload as any).token).toBe('c');
+    });
+
+    it('emits run.completed after backfill when the run already finished', async function () {
+        const { result } = renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const echo = (window as any).Echo;
+
+        act(() => {
+            echo.__connection.fire('disconnected');
+            echo.__connection.fire('connected');
+        });
+
+        await act(async () => {
+            fetchResolve!(
+                fakeOk({
+                    run_id: 42,
+                    status: 'complete',
+                    since: 0,
+                    cursor: 1,
+                    token_log: [{ token: 'x', index: 0, t_ms: 1, logprobs: null }],
+                    completion: {
+                        input_tokens: 5,
+                        output_tokens: 1,
+                        duration_ms: 100,
+                        tokens_per_second: 10,
+                        estimated_cost: 0.0001,
+                    },
+                    error: null,
+                }),
+            );
+        });
+
+        expect(result.current.status).toBe('complete');
+        const last = result.current.events[result.current.events.length - 1];
+        expect(last.event).toBe('run.completed');
+    });
+
+    it('emits run.errored after backfill when the run failed during the gap', async function () {
+        const { result } = renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const echo = (window as any).Echo;
+
+        act(() => {
+            echo.__connection.fire('disconnected');
+            echo.__connection.fire('connected');
+        });
+
+        await act(async () => {
+            fetchResolve!(
+                fakeOk({
+                    run_id: 42,
+                    status: 'error',
+                    since: 0,
+                    cursor: 0,
+                    token_log: [],
+                    completion: null,
+                    error: { message: 'rate-limited', partial_output: null },
+                }),
+            );
+        });
+
+        expect(result.current.status).toBe('errored');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const errored = result.current.events.find((e) => e.event === 'run.errored') as any;
+        expect(errored.payload.message).toBe('rate-limited');
+    });
+
+    it('does not refetch on a second reconnect without an intervening disconnect', function () {
+        renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const connection = (window as any).Echo.__connection;
+
+        act(() => {
+            connection.fire('disconnected');
+            connection.fire('connected');
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((globalThis as any).fetch).toHaveBeenCalledTimes(1);
+
+        // A second 'connected' without a fresh disconnect doesn't trigger again.
+        act(() => connection.fire('connected'));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((globalThis as any).fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not crash if the backfill request fails', async function () {
+        const { result } = renderHook(() => useRunStream(42));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const connection = (window as any).Echo.__connection;
+
+        act(() => {
+            connection.fire('disconnected');
+            connection.fire('connected');
+        });
+
+        // Resolve with a 5xx-style response.
+        await act(async () => {
+            fetchResolve!({ ok: false, json: async () => ({}) });
+        });
+
+        // No events added, but the hook is still alive.
+        expect(result.current.events).toEqual([]);
+        expect(result.current.status).toBe('idle');
+    });
+});
