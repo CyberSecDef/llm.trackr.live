@@ -2,87 +2,174 @@ import { useEffect, useState } from 'react';
 import { RUN_EVENT_NAMES, type RunEvent } from '@/types/runs';
 
 /*
- * Subscribes to `private-runs.{runId}` and accumulates every event the
- * StreamRunJob broadcasts (M6 chunk 4b).
+ * Subscribes to a run's event stream and accumulates events (M6
+ * chunks 4b + 5b). Prefers the WebSocket transport (Laravel Echo /
+ * Reverb / pusher-js) when available; on connection failure, falls
+ * back to the SSE endpoint (`GET /runs/{id}/stream`).
  *
- * Echo is read from `window.Echo` (initialized in resources/js/echo.ts).
- * If Echo isn't configured for the current environment (no
- * VITE_REVERB_APP_KEY set), the hook becomes a no-op — `events` stays
- * empty and `status` stays `idle`. That keeps the debug page renderable
- * in CI / preview environments without a Reverb server.
+ * Transport selection:
+ *   - `window.Echo` set + connected → WebSocket
+ *   - `window.Echo` null OR pusher connection enters `failed` /
+ *     `unavailable` → fall back to SSE
+ *   - Neither available (e.g. SSR, EventSource missing) → 'none'
  *
- * Cleanup: on unmount or runId change we stop listening for every event
- * name and leave the channel. Without that, page navigation would leak
- * subscriptions across runs.
+ * Once we fall back to SSE we STAY there for the rest of the run,
+ * even if WebSocket recovers. Avoids transport thrashing and the
+ * dedup complexity that switching back would require. The next run
+ * (new runId) starts fresh on WebSocket again. Documented choice;
+ * see docs/phase1.md M6 chunk 5b.
  *
- * The status transitions are derived from terminal events:
- *   - `run.started` flips idle → streaming
- *   - `run.completed` flips streaming → complete
- *   - `run.errored` flips streaming → errored
- * Components can render different shells based on this without
- * re-walking the event list.
+ * Mid-stream fallback resets `events` to []. The SSE controller
+ * replays from the persisted token_log cursor 0, so the user sees
+ * the run from the start (with a brief flicker). Simpler than
+ * tracking a cursor; M8 can refine if the viz needs smoother UX.
+ *
+ * Two-effect shape: the first effect resets state when (runId,
+ * transport) changes; the second sets up the subscription against
+ * the active transport. Splitting them lets state reset reliably
+ * fire BEFORE subscription begins, regardless of React's effect
+ * scheduling.
  */
 
 export type RunStreamStatus = 'idle' | 'streaming' | 'complete' | 'errored';
+export type RunStreamTransport = 'websocket' | 'sse' | 'none';
 
 export interface UseRunStreamResult {
     events: RunEvent[];
     status: RunStreamStatus;
-    /** True when Echo isn't configured — the page will never receive events. */
+    transport: RunStreamTransport;
+    /** Back-compat alias for `transport === 'none'`. */
     disabled: boolean;
+}
+
+function pickInitialTransport(): RunStreamTransport {
+    if (typeof window === 'undefined') {
+        return 'none';
+    }
+    if (window.Echo) {
+        return 'websocket';
+    }
+    if (typeof window.EventSource !== 'undefined') {
+        return 'sse';
+    }
+    return 'none';
+}
+
+/**
+ * Derive the next status from an event name. Pulled out so both
+ * transports use the same transition table.
+ */
+function deriveStatus(name: RunEvent['event'], prev: RunStreamStatus): RunStreamStatus {
+    if (name === 'run.started') return 'streaming';
+    if (name === 'run.completed') return 'complete';
+    if (name === 'run.errored') return 'errored';
+    return prev;
 }
 
 export function useRunStream(runId: number | null): UseRunStreamResult {
     const [events, setEvents] = useState<RunEvent[]>([]);
     const [status, setStatus] = useState<RunStreamStatus>('idle');
-    const disabled = typeof window === 'undefined' || window.Echo === null;
+    const [transport, setTransport] = useState<RunStreamTransport>(pickInitialTransport);
 
+    // Effect 1: when (runId, transport) changes, reset state. Effect 2
+    // does the subscription. Effects fire in declaration order, so the
+    // reset always lands before the new transport's first event.
+    //
+    // Including `transport` in the deps is what makes the mid-stream
+    // fallback work: when Effect 2 flips transport from 'websocket' to
+    // 'sse', this effect re-runs and clears the event list so SSE can
+    // replay from cursor 0 without leaving stale WS events behind.
     useEffect(() => {
-        if (runId === null || disabled) {
+        if (runId === null) {
             return;
         }
-        // Capture Echo into the closure so cleanup uses the same instance
-        // we subscribed against — guards against the global being torn
-        // down (test teardown, hot reload) before unmount runs.
-        const echo = window.Echo;
-        if (!echo) {
-            return;
-        }
-
-        // Reset state when switching to a different run. The lint rule
-        // warns about cascading renders, but the alternative (deriving
-        // from props via a key) requires the parent to re-mount us —
-        // a worse contract for callers. The reset only fires when
-        // runId itself changes, so the "cascading renders" risk is one
-        // extra render at a transition the user is already triggering.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setEvents([]);
-
         setStatus('idle');
+    }, [runId, transport]);
 
-        const channel = echo.private(`runs.${runId}`);
-
-        for (const name of RUN_EVENT_NAMES) {
-            channel.listen(`.${name}`, (payload: RunEvent['payload']) => {
-                setEvents((prev) => [...prev, { event: name, payload } as RunEvent]);
-
-                if (name === 'run.started') {
-                    setStatus('streaming');
-                } else if (name === 'run.completed') {
-                    setStatus('complete');
-                } else if (name === 'run.errored') {
-                    setStatus('errored');
-                }
-            });
+    // Effect 2: subscribe against the active transport.
+    useEffect(() => {
+        if (runId === null || transport === 'none') {
+            return;
         }
 
-        return () => {
-            for (const name of RUN_EVENT_NAMES) {
-                channel.stopListening(`.${name}`);
-            }
-            echo.leave(`runs.${runId}`);
+        const appendEvent = (name: RunEvent['event'], payload: RunEvent['payload']) => {
+            setEvents((prev) => [...prev, { event: name, payload } as RunEvent]);
+            setStatus((prev) => deriveStatus(name, prev));
         };
-    }, [runId, disabled]);
 
-    return { events, status, disabled };
+        if (transport === 'websocket') {
+            const echo = window.Echo;
+            if (!echo) {
+                // Echo got torn down between renders. Fall back.
+                // setTransport-in-effect is the documented pattern here:
+                // it's how the fallback decision propagates to the next
+                // render of this same effect.
+                // eslint-disable-next-line react-hooks/set-state-in-effect
+                setTransport(typeof window.EventSource !== 'undefined' ? 'sse' : 'none');
+                return;
+            }
+
+            const channel = echo.private(`runs.${runId}`);
+            for (const name of RUN_EVENT_NAMES) {
+                channel.listen(`.${name}`, (payload: RunEvent['payload']) => {
+                    appendEvent(name, payload);
+                });
+            }
+
+            // Pusher's connection state changes drive the fallback
+            // decision. 'failed' = handshake gave up; 'unavailable' =
+            // disconnected and can't reconnect. Either way, SSE.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const connection = (echo as any).connector?.pusher?.connection;
+            const onStateChange = (state: { current: string }) => {
+                if (state.current === 'failed' || state.current === 'unavailable') {
+                    setTransport(typeof window.EventSource !== 'undefined' ? 'sse' : 'none');
+                }
+            };
+            connection?.bind?.('state_change', onStateChange);
+
+            return () => {
+                connection?.unbind?.('state_change', onStateChange);
+                for (const name of RUN_EVENT_NAMES) {
+                    channel.stopListening(`.${name}`);
+                }
+                echo.leave(`runs.${runId}`);
+            };
+        }
+
+        // transport === 'sse'
+        if (typeof window.EventSource === 'undefined') {
+            setTransport('none');
+            return;
+        }
+        const es = new EventSource(`/runs/${runId}/stream`);
+        for (const name of RUN_EVENT_NAMES) {
+            es.addEventListener(name, (e) => {
+                const payload = JSON.parse((e as MessageEvent).data);
+                appendEvent(name, payload);
+            });
+        }
+        // SSE has no nuanced state machine — if onerror fires after
+        // readyState=CLOSED, the connection's dead. Browser auto-
+        // reconnect handles transient drops; we only intervene for
+        // hard close.
+        es.onerror = () => {
+            if (es.readyState === EventSource.CLOSED) {
+                setTransport('none');
+            }
+        };
+
+        return () => {
+            es.close();
+        };
+    }, [runId, transport]);
+
+    return {
+        events,
+        status,
+        transport,
+        disabled: transport === 'none',
+    };
 }

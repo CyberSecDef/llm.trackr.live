@@ -80,6 +80,7 @@ beforeEach(() => {
     (window as any).Echo = {
         private: vi.fn(() => channel),
         leave: vi.fn(),
+        connector: { pusher: { connection: { bind: vi.fn(), unbind: vi.fn() } } },
         __channel: channel,
     };
 });
@@ -87,6 +88,8 @@ beforeEach(() => {
 afterEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).Echo = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).EventSource;
 });
 
 describe('<DebugRun />', () => {
@@ -103,6 +106,11 @@ describe('<DebugRun />', () => {
         const channel = screen.getByTestId('debug-channel');
         expect(channel.textContent).toContain('private-runs.42');
         expect(channel.textContent).toContain('idle');
+    });
+
+    it('shows the active transport label', () => {
+        render(<Debug run={sampleRun} channel="private-runs.42" />);
+        expect(screen.getByTestId('debug-transport').textContent).toBe('WebSocket');
     });
 
     it('shows the waiting placeholder before any events arrive', () => {
@@ -159,11 +167,32 @@ describe('<DebugRun />', () => {
         expect(screen.getByTestId('debug-channel').textContent).toContain('complete');
     });
 
-    it('shows the Echo-disabled notice when window.Echo is null', () => {
+    it('falls back to SSE label when Echo is null but EventSource is present', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).Echo = null;
+        // Provide a stub EventSource so the hook picks 'sse' not 'none'.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).EventSource = class {
+            addEventListener = vi.fn();
+            close = vi.fn();
+            onerror: ((e: Event) => unknown) | null = null;
+            readyState = 1;
+            constructor(public url: string) {}
+            static CLOSED = 2;
+        };
+
+        render(<Debug run={sampleRun} channel="private-runs.42" />);
+        expect(screen.getByTestId('debug-transport').textContent).toBe('SSE (fallback)');
+        expect(screen.queryByTestId('echo-disabled-notice')).not.toBeInTheDocument();
+    });
+
+    it('shows the disabled notice when neither Echo nor EventSource is available', () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).Echo = null;
+        // EventSource intentionally undefined.
 
         render(<Debug run={sampleRun} channel="private-runs.42" />);
         expect(screen.getByTestId('echo-disabled-notice')).toBeInTheDocument();
+        expect(screen.getByTestId('debug-transport').textContent).toBe('unavailable');
     });
 });

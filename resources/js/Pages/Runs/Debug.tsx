@@ -4,16 +4,18 @@ import { useRunStream } from '@/hooks/useRunStream';
 
 /*
  * /runs/{id}/debug — internal debug view of a run's streaming events
- * (M6 chunk 4b). Top: static run metadata header. Below: chronological
- * JSON event list, append-only as Echo delivers them.
+ * (M6 chunks 4b + 5b). Top: static run metadata header + active
+ * transport indicator. Below: chronological JSON event list, append-
+ * only as either WebSocket or SSE delivers events.
  *
  * The real visualization page is M8 — this is the bare 'is the
- * pipeline alive?' view used to verify the WebSocket plumbing.
+ * pipeline alive?' view used to verify the streaming plumbing.
  *
- * `useRunStream` reads from `window.Echo` (initialized in
- * resources/js/echo.ts). If Echo isn't configured for the current
- * environment, the page still renders the metadata header and shows
- * a 'streaming disabled' notice; the event list stays empty.
+ * `useRunStream` (chunk 4b + 5b) prefers WebSocket but falls back to
+ * the SSE endpoint at `/runs/{id}/stream` if Echo is unavailable or
+ * the WS connection enters `failed`/`unavailable`. When neither
+ * transport is usable (no Echo, no EventSource), `transport` is
+ * `'none'` and we render the offline notice.
  */
 
 interface RunSummary {
@@ -34,8 +36,14 @@ interface DebugRunProps {
     channel: string;
 }
 
+const TRANSPORT_LABEL: Record<string, string> = {
+    websocket: 'WebSocket',
+    sse: 'SSE (fallback)',
+    none: 'unavailable',
+};
+
 export default function DebugRun({ run, channel }: DebugRunProps) {
-    const { events, status, disabled } = useRunStream(run.id);
+    const { events, status, transport, disabled } = useRunStream(run.id);
 
     return (
         <>
@@ -45,7 +53,8 @@ export default function DebugRun({ run, channel }: DebugRunProps) {
                     <h1 className="text-2xl font-bold tracking-tight">Run #{run.id} — Debug</h1>
                     <p className="mt-1 text-xs text-slate-500" data-testid="debug-channel">
                         Subscribed to <code>{channel}</code> · live status:{' '}
-                        <strong>{status}</strong>
+                        <strong>{status}</strong> · transport:{' '}
+                        <strong data-testid="debug-transport">{TRANSPORT_LABEL[transport]}</strong>
                     </p>
 
                     <section
@@ -65,8 +74,9 @@ export default function DebugRun({ run, channel }: DebugRunProps) {
                             className="mt-6 text-sm text-amber-400"
                             data-testid="echo-disabled-notice"
                         >
-                            Realtime streaming is disabled (Reverb not configured for this
-                            environment). The event list will stay empty.
+                            No realtime transport is available — neither WebSocket nor SSE could be
+                            established. The event list will stay empty until you reload from an
+                            environment that supports at least one.
                         </p>
                     )}
 
