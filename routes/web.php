@@ -8,7 +8,9 @@ use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
+use App\Models\User;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -110,3 +112,23 @@ Route::middleware('auth')->group(function () {
     Route::post('logout', [SocialiteController::class, 'logout'])
         ->name('logout');
 });
+
+// Dev-only magic login. Bypasses OAuth so a phone on the LAN can log
+// in without configuring a real Google/MS/Facebook redirect URI for
+// the LAN IP. Companion to `php artisan dev:login` — the command
+// produces a signed URL that hits this handler.
+//
+// 404s outside `local` so this never works in staging/prod. The
+// route is always registered (avoids the boot-time vs run-time
+// confusion that an `if (app()->environment(...))` wrap creates and
+// makes the route testable); the runtime abort_unless is what
+// enforces the gate. Belt-and-braces with the command's own env
+// check, which refuses to even generate URLs outside `local`.
+Route::get('dev/login/{user}', function (User $user, Request $request) {
+    abort_unless(app()->environment('local'), 404);
+    abort_unless($request->hasValidSignature(), 403, 'Signature missing or expired.');
+    Auth::login($user);
+    $request->session()->regenerate();
+
+    return redirect()->route('dashboard');
+})->name('dev.login');
