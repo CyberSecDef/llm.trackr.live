@@ -22,7 +22,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
-| M8 | Frontend — Live Visualization | M6, M7 | 12 days | 🟡 In progress (chunks 1–3 done) | ✅ End-of-M8 = vertical slice |
+| M8 | Frontend — Live Visualization | M6, M7 | 12 days | 🟡 In progress (chunks 1–4 done) | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
@@ -353,7 +353,7 @@ Carry-forward into M8
 **Purpose:** The right pane shows the real visualization, not the debug log. This is the vertical-slice gate.
 
 **Tasks**
-**Decisions (chunks 1–3):**
+**Decisions (chunks 1–4):**
 - **Lazy-load Three.js** via `React.lazy` + `Suspense` — keeps the ~600KB Three.js bundle out of the main app chunk so users without an in-flight run never download it. Vite splits `VizPane` into its own ~521KB chunk (132KB gzipped) as observed on chunk-1 build output.
 - **Keep the chunk-6b debug pane behind a viewer toggle.** Viz is the default; "Debug" tab swaps in the chunk-6b LiveStreamPane. Useful while M8 lands one chunk at a time — if a viz piece regresses, the debug fallback confirms events ARE arriving.
 - **Lift the `useRunStream` subscription up to `ThreadShow`.** Both views share one Echo channel; the toggle just swaps the renderer. Single source of truth for events.
@@ -366,6 +366,11 @@ Carry-forward into M8
 - **Burst per token (5–10 particles), not 1:1.** (chunk 3) Looks like activation flowing rather than a single moving dot. Density picked to read at 30 tok/s without saturating the 256-particle pool (worst case ~1500 active particles if all bursts overlap → pool cap is the visual ceiling, not a correctness requirement).
 - **Straight-column trajectory + random X/Z jitter, not helix.** (chunk 3) Spirals occluded the slabs they were passing — important since the slabs are the primary signal and particles are secondary. Jitter (±0.6 on each axis) gives the burst dispersion without overlapping the layer geometry.
 - **Fade via scale ramp, not custom shader for per-instance alpha.** (chunk 3) `InstancedMesh` has no built-in per-instance opacity uniform. Shrinking scale 1.0 → 0.0 over the last 800ms achieves the same visual outcome without forking the shader. If we ever need true per-particle alpha (e.g. logprob-driven brightness), revisit with a custom ShaderMaterial.
+- **Live text inline on the active run row, not a separate "Live" card.** (chunk 4) User choice — keeps the conversation flow uninterrupted; the row transitions seamlessly from streaming-with-cursor to static-with-final-tokens via the 400ms terminal-reload that already exists. Implementation cost is equal either way, but the inline approach avoids a phantom card popping in/out between runs.
+- **Cumulative TPS, no rolling window.** (chunk 4) User choice — smoother number, no per-event timestamp buffer to maintain, derivation stays a pure function of `(events, run, model)` with no ticker required. The displayed value updates only on new tokens, which is fine because cumulative-by-definition doesn't change between events.
+- **Derive TPS from `t_ms` of the latest token, not wall clock.** (chunk 4) Wall-clock would need a 250ms `setInterval` re-render. Using `t_ms` (server-set per event, stable between renders) keeps the row pure and avoids extra render churn. Trade-off: if WebSocket dies mid-stream the TPS freezes rather than continuing to drift; we'd rather show a frozen-but-real number than a wall-clock that lies about throughput.
+- **Pricing is per-field-nullable.** (chunk 4) `pricing_input_per_million` and `pricing_output_per_million` are independently optional — the cost calculation skips the null side rather than refusing to compute. A model with only output pricing still shows an output-only cost (cheaper than nothing). The entire cost row hides when BOTH are null, which is the only case where "$0.0000" would mislead.
+- **Context bar shares the M7 budget-bar visual language.** (chunk 4) Same color thresholds (amber at 80%, destructive at 100%), same h-1 / `bg-muted` track. The bar is the same widget pre-submit (M7 chunk 6a `BudgetIndicator`) and during-stream (chunk 4 `LiveMetricsStrip`) — users only learn one chart.
 
 **Tasks**
 - [x] Three.js setup: scene, camera, renderer, OrbitControls (chunk 1). `resources/js/Components/Viz/VizPane.tsx` (lazy-loaded via `React.lazy` from `Threads/Show`) mounts a `WebGLRenderer` on a canvas ref, sets up a `PerspectiveCamera`, two lights (ambient + directional key), `OrbitControls` with damping. A `ResizeObserver` keeps the renderer's drawing buffer in sync with the canvas's CSS size (Three.js doesn't auto-resize). Animation loop guarded by a `mounted` flag so React strict-mode remounts don't leak `requestAnimationFrame` callbacks. Cleanup disposes geometries, materials, controls, and the renderer itself. Placeholder content: a slow-spinning wireframe icosahedron + empty-state overlay ("Submit a prompt to see the visualization") — replaced wholesale by chunk 2's transformer stack. **FpsCounter** (dev-only) sits absolute-positioned top-right of the canvas; rolling 30-frame window updating ~4×/sec. **`useReducedMotion` hook** subscribes to the `prefers-reduced-motion` media query and fires the auto-fallback in `RightPane`: when the user has motion reduced, the Viz tab is `aria-disabled` and the page boots into Debug; toggling the OS preference mid-session auto-flips to Debug. New jsdom polyfills (`window.matchMedia` + `ResizeObserver`/`scrollIntoView` from chunk 7) in `test/setup.ts`. The chunk-6b auto-reload-on-terminal effect lifted from `LiveStreamPane` to `RightPane` so it fires from any view. 8 new Vitest tests (default Viz mount, toggle aria + click flow, Debug → Viz round-trip, reduced-motion forces Debug + disables Viz tab, lifted stream forwards to both panes, single-subscription invariant, hook returns matchMedia at mount). The 6 chunk-6b tests that asserted on LiveStreamPane DOM updated to flip the Debug tab first.
@@ -380,10 +385,11 @@ Carry-forward into M8
 - [ ] D3 attention heatmap component (per-layer; illustrative when no real logprobs).
 - [ ] D3 logits distribution component (top-10 bars, live updates).
 - [ ] MoE routing component: bar chart of router scores, expert-utilization counter. Only mounted when `model.architecture_type === 'moe'`.
-- [ ] KV cache progress bar.
+- [x] Live text + cost/TPS + context bar (chunk 4 — fused 4/9–11/9 items into one chunk because they all read from the same derived metrics). The Transcript card for a pending/streaming run swaps its empty Assistant block for `LiveRunBody`: live token text concatenated from `token.received` events with a blinking cursor (`▍`, `animate-pulse`), and a `LiveMetricsStrip` showing `N out · X.X t/s · $0.0000` plus a context bar `used / model.context_length`. Cumulative TPS (`output_tokens / last_t_ms × 1000`) — no rolling buffer, no wall-clock ticker, derivation invariant between events. Cost uses the model's `pricing_input_per_million` + `pricing_output_per_million` and gracefully omits when either field or the whole pricing object is null. Context bar percent crosses to amber at 80% and destructive at 100% (matches the M7 prompt budget bar). All derivation lives in `resources/js/lib/streamMetrics.ts` — a pure function returning `{ liveText, outputTokens, elapsedMs, tps, costSoFar, contextUsed, contextBudget }` so the math is unit-testable without React. 12 Vitest tests cover the pure helper (no events, ordering, partial pricing, divide-by-zero, ignored non-token events). 6 Vitest tests on `<ThreadShow />` cover the live row + cursor + metrics strip + the hide-bar-when-no-context-length / hide-cost-when-no-pricing / static-row-during-terminal-flicker paths.
+- [ ] KV cache progress bar (rolled into the chunk-4 context bar above — same denominator, same widget).
 - [ ] Playback controls: play/pause, step (advance one token), speed (0.5×/1×/2×/4×).
-- [ ] Live token-stream text panel (left side of split layout).
-- [ ] Cost / tokens-per-second readout.
+- [x] Live token-stream text panel (left side of split layout) — landed in chunk 4 above; the Transcript's active-run row IS the live panel.
+- [x] Cost / tokens-per-second readout — landed in chunk 4 above (`LiveMetricsStrip`).
 - [ ] FPS counter (dev-only).
 - [ ] Reduced-motion fallback: when `prefers-reduced-motion`, replace animations with stepped static frames.
 - [ ] Vertical-slice end-to-end test: submit a prompt to OpenAI gpt-4o → watch the viz animate alongside the token stream.

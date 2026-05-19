@@ -16,6 +16,7 @@ import { lazy, Suspense } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
+import { computeStreamMetrics } from '@/lib/streamMetrics';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import ParameterControls, {
@@ -150,7 +151,11 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                     <div className="mt-4 grid gap-6 lg:grid-cols-3">
                         <div className="lg:col-span-2 space-y-6 min-w-0">
                             <ThreadHeader thread={thread} />
-                            <Transcript runs={runs} />
+                            <Transcript
+                                runs={runs}
+                                events={stream.events}
+                                usableModels={usable_models}
+                            />
                             <PromptFooter
                                 threadId={thread.id}
                                 usableModels={usable_models}
@@ -462,7 +467,15 @@ function ThreadHeader({ thread }: { thread: ThreadShowProps['thread'] }) {
     );
 }
 
-function Transcript({ runs }: { runs: RunRow[] }) {
+function Transcript({
+    runs,
+    events,
+    usableModels,
+}: {
+    runs: RunRow[];
+    events: RunEvent[];
+    usableModels: UsableModel[];
+}) {
     if (runs.length === 0) {
         return (
             <Card className="border-dashed bg-card/40 text-center" data-testid="empty-transcript">
@@ -477,57 +490,173 @@ function Transcript({ runs }: { runs: RunRow[] }) {
 
     return (
         <section className="space-y-4" data-testid="transcript">
-            {runs.map((run) => (
-                <Card key={run.id} data-testid={`run-${run.id}`}>
-                    <CardContent className="space-y-3 p-4">
-                        <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs text-muted-foreground">
-                                Run #{run.sequence_in_thread}
-                            </p>
-                            <span
-                                className={cn(
-                                    'rounded-full px-2 py-0.5 text-xs',
-                                    STATUS_CLASSES[run.status],
-                                )}
-                            >
-                                {STATUS_LABEL[run.status]}
-                            </span>
-                        </div>
-
-                        {run.prompt !== null && (
-                            <div className="space-y-1">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                    You
+            {runs.map((run) => {
+                const isLive = run.status === 'pending' || run.status === 'streaming';
+                const model = isLive
+                    ? (usableModels.find((m) => m.id === run.model_id) ?? null)
+                    : null;
+                return (
+                    <Card key={run.id} data-testid={`run-${run.id}`}>
+                        <CardContent className="space-y-3 p-4">
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                    Run #{run.sequence_in_thread}
                                 </p>
-                                <p className="whitespace-pre-wrap text-sm">{run.prompt}</p>
+                                <span
+                                    className={cn(
+                                        'rounded-full px-2 py-0.5 text-xs',
+                                        STATUS_CLASSES[run.status],
+                                    )}
+                                >
+                                    {STATUS_LABEL[run.status]}
+                                </span>
                             </div>
-                        )}
 
-                        {run.output_text !== null && (
-                            <div className="space-y-1">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                    Assistant
-                                </p>
-                                <p className="whitespace-pre-wrap text-sm">{run.output_text}</p>
-                            </div>
-                        )}
+                            {run.prompt !== null && (
+                                <div className="space-y-1">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        You
+                                    </p>
+                                    <p className="whitespace-pre-wrap text-sm">{run.prompt}</p>
+                                </div>
+                            )}
 
-                        {run.status === 'error' && run.error_message && (
-                            <p className="text-xs text-destructive">{run.error_message}</p>
-                        )}
-
-                        {(run.input_tokens !== null || run.output_tokens !== null) && (
-                            <p className="text-xs text-muted-foreground">
-                                {run.input_tokens ?? 0} in · {run.output_tokens ?? 0} out
-                                {run.duration_ms !== null && ` · ${run.duration_ms}ms`}
-                                {run.estimated_cost !== null &&
-                                    ` · $${run.estimated_cost.toFixed(4)}`}
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-            ))}
+                            {isLive ? (
+                                <LiveRunBody run={run} events={events} model={model} />
+                            ) : (
+                                <StaticRunBody run={run} />
+                            )}
+                        </CardContent>
+                    </Card>
+                );
+            })}
         </section>
+    );
+}
+
+/**
+ * StaticRunBody — the post-stream rendering of a completed or
+ * errored run. Reads from the server-side row only.
+ */
+function StaticRunBody({ run }: { run: RunRow }) {
+    return (
+        <>
+            {run.output_text !== null && (
+                <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Assistant
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm">{run.output_text}</p>
+                </div>
+            )}
+
+            {run.status === 'error' && run.error_message && (
+                <p className="text-xs text-destructive">{run.error_message}</p>
+            )}
+
+            {(run.input_tokens !== null || run.output_tokens !== null) && (
+                <p className="text-xs text-muted-foreground">
+                    {run.input_tokens ?? 0} in · {run.output_tokens ?? 0} out
+                    {run.duration_ms !== null && ` · ${run.duration_ms}ms`}
+                    {run.estimated_cost !== null && ` · $${run.estimated_cost.toFixed(4)}`}
+                </p>
+            )}
+        </>
+    );
+}
+
+/**
+ * LiveRunBody (M8 chunk 4) — replaces the empty Assistant block on a
+ * streaming/pending run with live token text, a blinking cursor, and
+ * a metrics strip (output tokens · TPS · cost · context bar).
+ *
+ * All derivations are pure (see `lib/streamMetrics.ts`); this component
+ * only owns layout. When the run completes the parent re-renders this
+ * row through `StaticRunBody` via the 400ms terminal-status reload.
+ */
+function LiveRunBody({
+    run,
+    events,
+    model,
+}: {
+    run: RunRow;
+    events: RunEvent[];
+    model: UsableModel | null;
+}) {
+    const metrics = computeStreamMetrics({
+        events,
+        inputTokens: run.input_tokens,
+        contextLength: model?.context_length ?? null,
+        pricing: model
+            ? {
+                  pricing_input_per_million: model.pricing_input_per_million ?? null,
+                  pricing_output_per_million: model.pricing_output_per_million ?? null,
+              }
+            : null,
+    });
+
+    return (
+        <>
+            <div className="space-y-1" data-testid="live-assistant-block">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Assistant
+                </p>
+                <p className="whitespace-pre-wrap text-sm" data-testid="live-assistant-text">
+                    {metrics.liveText}
+                    <span
+                        className="ml-0.5 inline-block animate-pulse text-foreground/70"
+                        aria-hidden="true"
+                        data-testid="live-cursor"
+                    >
+                        ▍
+                    </span>
+                </p>
+            </div>
+
+            <LiveMetricsStrip metrics={metrics} />
+        </>
+    );
+}
+
+function LiveMetricsStrip({ metrics }: { metrics: ReturnType<typeof computeStreamMetrics> }) {
+    const pctRaw =
+        metrics.contextBudget !== null && metrics.contextBudget > 0
+            ? (metrics.contextUsed / metrics.contextBudget) * 100
+            : null;
+    const pct = pctRaw !== null ? Math.min(100, pctRaw) : null;
+    const fillClass =
+        pct === null
+            ? 'bg-primary'
+            : pct >= 100
+              ? 'bg-destructive'
+              : pct >= 80
+                ? 'bg-amber-500'
+                : 'bg-primary';
+
+    return (
+        <div className="space-y-1.5" data-testid="live-metrics">
+            <p className="text-xs text-muted-foreground" data-testid="live-numbers">
+                {metrics.outputTokens.toLocaleString()} out
+                {metrics.tps !== null ? ` · ${metrics.tps.toFixed(1)} t/s` : ' · — t/s'}
+                {metrics.costSoFar !== null ? ` · $${metrics.costSoFar.toFixed(4)}` : ''}
+            </p>
+            {pct !== null && (
+                <div className="space-y-0.5" data-testid="live-context-bar">
+                    <p className="text-[10px] text-muted-foreground">
+                        {metrics.contextUsed.toLocaleString()} /{' '}
+                        {metrics.contextBudget?.toLocaleString()} ctx
+                        <span className="ml-1 text-muted-foreground/70">({pct.toFixed(0)}%)</span>
+                    </p>
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                            className={cn('h-full transition-all', fillClass)}
+                            style={{ width: `${Math.max(2, pct)}%` }}
+                            data-testid="live-context-bar-fill"
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 

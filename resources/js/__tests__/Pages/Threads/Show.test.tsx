@@ -326,6 +326,279 @@ describe('<ThreadShow /> — transcript', function () {
         expect(within(card).getByText(/10 in · 1 out/)).toBeInTheDocument();
     });
 
+    // ─── M8 chunk 4: LiveRunBody ──────────────────────────────────
+    // For pending/streaming rows, the Assistant block is fed by
+    // computeStreamMetrics(events) rather than the row's static
+    // output_text. The metrics strip shows TPS · cost · context bar.
+
+    it('renders LiveRunBody (cursor + live text from events) on a streaming run', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'run.started',
+                    payload: { run_id: 51, started_at: '2026-05-19T00:00:00Z' },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'Hello',
+                        index: 0,
+                        t_ms: 200,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: ' world',
+                        index: 1,
+                        t_ms: 400,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: 100,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        const live = within(card).getByTestId('live-assistant-text');
+        expect(live.textContent).toContain('Hello world');
+        expect(within(card).getByTestId('live-cursor')).toBeInTheDocument();
+        // Static run renderers should NOT be visible.
+        expect(within(card).queryByText(/10 in · 1 out/)).not.toBeInTheDocument();
+    });
+
+    it('shows TPS · cost · context bar on a streaming run with model + pricing', function () {
+        // 2 tokens at t_ms 1000 → cumulative TPS = 2 tok/s.
+        // input=100 @ $5/M = $0.0005; output=2 @ $15/M = $0.00003.
+        // context_used = 102 / 128000 ≈ 0.08% → bar visible but tiny.
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'A',
+                        index: 0,
+                        t_ms: 500,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'B',
+                        index: 1,
+                        t_ms: 1000,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: 100,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const numbers = screen.getByTestId('live-numbers');
+        expect(numbers.textContent).toMatch(/2 out/);
+        expect(numbers.textContent).toMatch(/2\.0 t\/s/);
+        expect(numbers.textContent).toMatch(/\$0\.0005/);
+        expect(screen.getByTestId('live-context-bar')).toBeInTheDocument();
+        expect(screen.getByTestId('live-context-bar-fill')).toBeInTheDocument();
+    });
+
+    it('hides the context bar when the model has no context_length', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'x',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        const modelNoContext = [{ ...oneModel[0], context_length: null }];
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: 0,
+                    },
+                ]}
+                usable_models={modelNoContext}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.queryByTestId('live-context-bar')).not.toBeInTheDocument();
+        // Numbers strip still renders.
+        expect(screen.getByTestId('live-numbers')).toBeInTheDocument();
+    });
+
+    it('omits the cost segment when pricing is missing', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 51,
+                        token: 'x',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        const modelNoPricing = [
+            {
+                ...oneModel[0],
+                pricing_input_per_million: null,
+                pricing_output_per_million: null,
+            },
+        ];
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: 0,
+                    },
+                ]}
+                usable_models={modelNoPricing}
+                has_api_keys={true}
+            />,
+        );
+        const numbers = screen.getByTestId('live-numbers');
+        expect(numbers.textContent).not.toMatch(/\$/);
+    });
+
+    it('shows an empty cursor + 0 tokens when no events have arrived yet', function () {
+        mockStreamState.value = {
+            events: [],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                        input_tokens: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        expect(within(card).getByTestId('live-cursor')).toBeInTheDocument();
+        expect(within(card).getByTestId('live-numbers').textContent).toMatch(/0 out/);
+        expect(within(card).getByTestId('live-numbers').textContent).toMatch(/— t\/s/);
+    });
+
+    it('keeps StaticRunBody for a completed run even with events present', function () {
+        // Event stream is non-empty (could happen briefly between
+        // run.completed and the 400ms terminal-reload), but the row
+        // is `complete` so the static body owns the render.
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'token.received',
+                    payload: {
+                        run_id: 100,
+                        token: 'noise',
+                        index: 0,
+                        t_ms: 100,
+                        logprobs: null,
+                        is_final: false,
+                    },
+                },
+            ],
+            status: 'complete',
+            transport: 'websocket',
+            disabled: false,
+        };
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[sampleRun]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-100');
+        expect(within(card).queryByTestId('live-cursor')).not.toBeInTheDocument();
+        expect(within(card).queryByTestId('live-metrics')).not.toBeInTheDocument();
+        expect(within(card).getByText('4')).toBeInTheDocument(); // static output_text
+        expect(within(card).getByText(/10 in · 1 out/)).toBeInTheDocument();
+    });
+
     it('renders error messages for errored runs', function () {
         render(
             <ThreadShow
