@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ModelsController as AdminModelsController;
 use App\Http\Controllers\Admin\UsersController as AdminUsersController;
 use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\RunController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
@@ -70,6 +71,14 @@ Route::middleware('auth')->group(function () {
 
     Route::get('settings', [SettingsController::class, 'show'])->name('settings');
     Route::patch('settings', [SettingsController::class, 'update'])->name('settings.update');
+
+    // Run submission. Throttled per-user via the 'runs' RateLimiter
+    // registered in AppServiceProvider (live-reads users.max_runs_per_hour).
+    // The thread is route-bound; ownership is verified inside RunService
+    // so the same invariant holds for any future internal-API caller.
+    Route::post('threads/{thread}/runs', [RunController::class, 'store'])
+        ->middleware('throttle:runs')
+        ->name('threads.runs.store');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
