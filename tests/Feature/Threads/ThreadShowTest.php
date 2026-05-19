@@ -131,6 +131,39 @@ describe('GET /threads/{thread} — render shape', function () {
                 ->has('usable_models', 0)
         );
     });
+
+    it('includes architecture + capacity + pricing fields in each usable_models entry (M7 chunk 7)', function () {
+        $user = User::factory()->create();
+        $thread = Thread::factory()->for($user)->create();
+        ApiKey::factory()->for($user)->vendor('openai')->create();
+        LlmModel::factory()->vendor('openai')->moe(experts: 8, activeExperts: 2)->create([
+            'display_name' => 'GPT-MoE',
+            'hidden_dim' => 4096,
+            'attention_heads' => 32,
+            'layers' => 80,
+            'context_length' => 128_000,
+            'pricing_input_per_million' => 5.00,
+            'pricing_output_per_million' => 15.00,
+        ]);
+
+        $this->actingAs($user)->get("/threads/{$thread->id}")->assertInertia(
+            fn ($page) => $page
+                ->has('usable_models', 1)
+                ->where('usable_models.0.architecture_type', 'moe')
+                ->where('usable_models.0.layers', 80)
+                ->where('usable_models.0.hidden_dim', 4096)
+                ->where('usable_models.0.attention_heads', 32)
+                ->where('usable_models.0.moe_experts', 8)
+                ->where('usable_models.0.moe_active_experts', 2)
+                ->where('usable_models.0.context_length', 128_000)
+                // Numeric round-trip: PHP encodes 5.00 as "5", so the
+                // assertion compares to int. Same pattern as the chunk-3
+                // dashboard cost field.
+                ->where('usable_models.0.pricing_input_per_million', 5)
+                ->where('usable_models.0.pricing_output_per_million', 15)
+                ->has('usable_models.0.position_encoding')
+        );
+    });
 });
 
 describe('PATCH /threads/{thread} — update', function () {

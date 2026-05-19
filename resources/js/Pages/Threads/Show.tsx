@@ -14,6 +14,8 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { useRunStream } from '@/hooks/useRunStream';
+import ModelMetadataCard from '@/Components/ModelMetadataCard';
+import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -66,13 +68,10 @@ interface RunRow {
     created_at: string | null;
 }
 
-interface UsableModel {
-    id: number;
-    vendor: string;
-    name: string;
-    display_name: string;
-    context_length: number | null;
-}
+// The thread.show controller hands us the full model metadata; type is
+// re-exported from ModelPicker so we stay in sync with the picker's
+// expectations.
+type UsableModel = PickerModel;
 
 interface ThreadShowProps {
     thread: {
@@ -550,19 +549,16 @@ function PromptForm({
         });
     };
 
-    // Group models by vendor for the <optgroup> structure — easier to
-    // skim than a flat list when the user has multiple vendors.
-    const grouped = usableModels.reduce<Record<string, UsableModel[]>>((acc, model) => {
-        (acc[model.vendor] ??= []).push(model);
-        return acc;
-    }, {});
-
     const overBudget = preview ? !preview.fits : false;
     const submitDisabled = form.processing || form.data.prompt.trim() === '' || overBudget;
 
+    // Selected model object — fed to the metadata card so it can show
+    // the full attribute grid for the user's current choice.
+    const selectedModel = usableModels.find((m) => m.id === form.data.model_id) ?? null;
+
     return (
         <Card data-testid="prompt-form">
-            <CardContent className="p-4 space-y-3">
+            <CardContent className="space-y-3 p-4">
                 {preview && preview.history.length > 0 && (
                     <HistoryPreview
                         history={preview.history}
@@ -591,32 +587,28 @@ function PromptForm({
                     {preview && <BudgetIndicator preview={preview} />}
 
                     <div className="flex items-center gap-3 flex-wrap">
-                        <label className="text-xs text-muted-foreground" htmlFor="model-select">
-                            Model
-                        </label>
-                        <select
-                            id="model-select"
-                            value={form.data.model_id || ''}
-                            onChange={(e) => form.setData('model_id', Number(e.target.value))}
+                        {/*
+                            Span instead of <label> because the
+                            ModelPicker is a combobox (button trigger
+                            + listbox in a portaled popover), and the
+                            HTML label-for pattern doesn't apply.
+                            ModelPicker carries its own aria-label.
+                        */}
+                        <span className="text-xs text-muted-foreground">Model</span>
+                        <ModelPicker
+                            models={usableModels}
+                            value={form.data.model_id}
+                            onChange={(id) => form.setData('model_id', id)}
                             data-testid="model-select"
-                            className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        >
-                            {Object.entries(grouped).map(([vendor, models]) => (
-                                <optgroup key={vendor} label={vendor}>
-                                    {models.map((model) => (
-                                        <option key={model.id} value={model.id}>
-                                            {model.display_name}
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            ))}
-                        </select>
+                        />
                         <div className="flex-1" />
                         <Button type="submit" disabled={submitDisabled} data-testid="submit-prompt">
                             Submit
                         </Button>
                     </div>
                 </form>
+
+                {selectedModel && <ModelMetadataCard model={selectedModel} />}
             </CardContent>
         </Card>
     );

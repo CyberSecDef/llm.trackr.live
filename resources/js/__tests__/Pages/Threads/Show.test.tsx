@@ -99,13 +99,23 @@ const baseThread = {
     default_model_id: null,
 };
 
+// Match PickerModel shape (M7 chunk 7 extended usable_models).
 const oneModel = [
     {
         id: 10,
         vendor: 'openai',
         name: 'gpt-4o',
         display_name: 'GPT-4o',
+        architecture_type: 'dense',
+        position_encoding: 'rope',
+        layers: 80,
+        hidden_dim: 4096,
+        attention_heads: 32,
+        moe_experts: null,
+        moe_active_experts: null,
         context_length: 128000,
+        pricing_input_per_million: 5.0,
+        pricing_output_per_million: 15.0,
     },
 ];
 
@@ -363,36 +373,20 @@ describe('<ThreadShow /> — prompt footer', function () {
         expect(screen.getByTestId('submit-prompt')).toBeDisabled();
     });
 
-    it('lists usable models grouped by vendor in the select', function () {
+    it('renders the model picker trigger (chunk 7)', function () {
         render(
             <ThreadShow
                 thread={baseThread}
                 runs={[]}
-                usable_models={[
-                    {
-                        id: 1,
-                        vendor: 'openai',
-                        name: 'gpt-4o',
-                        display_name: 'GPT-4o',
-                        context_length: 128000,
-                    },
-                    {
-                        id: 2,
-                        vendor: 'anthropic',
-                        name: 'claude-3',
-                        display_name: 'Claude 3',
-                        context_length: 200000,
-                    },
-                ]}
+                usable_models={oneModel}
                 has_api_keys={true}
             />,
         );
-        const select = screen.getByTestId('model-select');
-        expect(within(select).getByText('GPT-4o')).toBeInTheDocument();
-        expect(within(select).getByText('Claude 3')).toBeInTheDocument();
-        // optgroups by vendor
-        const optgroups = select.querySelectorAll('optgroup');
-        expect(optgroups).toHaveLength(2);
+        // chunk 7 swapped the native <select> for ModelPicker; the
+        // test id stays so existing references keep working.
+        const trigger = screen.getByTestId('model-select');
+        expect(trigger).toHaveAttribute('role', 'combobox');
+        expect(trigger.textContent).toContain('GPT-4o');
     });
 
     it('posts to /threads/{id}/runs when the form is submitted', async function () {
@@ -748,5 +742,159 @@ describe('<ThreadShow /> — live stream pane (chunk 6b)', function () {
         );
         await vi.advanceTimersByTimeAsync(450);
         expect(routerReload).toHaveBeenCalledWith({ only: ['runs'] });
+    });
+});
+
+describe('<ThreadShow /> — model picker (chunk 7)', function () {
+    const twoModels = [
+        oneModel[0],
+        {
+            id: 11,
+            vendor: 'anthropic',
+            name: 'claude-3-opus',
+            display_name: 'Claude 3 Opus',
+            architecture_type: 'dense',
+            position_encoding: 'rope',
+            layers: 96,
+            hidden_dim: 12288,
+            attention_heads: 96,
+            moe_experts: null,
+            moe_active_experts: null,
+            context_length: 200_000,
+            pricing_input_per_million: 15.0,
+            pricing_output_per_million: 75.0,
+        },
+        {
+            id: 12,
+            vendor: 'openai',
+            name: 'gpt-moe',
+            display_name: 'GPT-MoE',
+            architecture_type: 'moe',
+            position_encoding: 'rope',
+            layers: 32,
+            hidden_dim: 4096,
+            attention_heads: 32,
+            moe_experts: 8,
+            moe_active_experts: 2,
+            context_length: 32_000,
+            pricing_input_per_million: 8.0,
+            pricing_output_per_million: 24.0,
+        },
+    ];
+
+    it('renders the metadata card for the initially-selected model', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('model-metadata-card');
+        expect(within(card).getByText('GPT-4o')).toBeInTheDocument();
+        expect(within(card).getByText('Dense')).toBeInTheDocument();
+        // Pricing rendered as "$X.YZ / M"
+        expect(within(card).getByText('$5.00 / M')).toBeInTheDocument();
+        expect(within(card).getByText('$15.00 / M')).toBeInTheDocument();
+    });
+
+    it('renders MoE config in the metadata card for MoE models', function () {
+        render(
+            <ThreadShow
+                thread={{ ...baseThread, default_model_id: 12 }}
+                runs={[]}
+                usable_models={twoModels}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('model-metadata-card');
+        expect(within(card).getByText(/MoE.*8 experts.*2 active/)).toBeInTheDocument();
+    });
+
+    it('opens the picker popover on trigger click', async function () {
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={twoModels}
+                has_api_keys={true}
+            />,
+        );
+        // Popover content is portaled — not in the DOM until open.
+        expect(screen.queryByPlaceholderText('Search models…')).not.toBeInTheDocument();
+        await user.click(screen.getByTestId('model-select'));
+        expect(screen.getByPlaceholderText('Search models…')).toBeInTheDocument();
+    });
+
+    it('shows the arch toggle + vendor chips in the picker filters', async function () {
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={twoModels}
+                has_api_keys={true}
+            />,
+        );
+        await user.click(screen.getByTestId('model-select'));
+        expect(screen.getByTestId('arch-filter')).toBeInTheDocument();
+        expect(screen.getByTestId('vendor-chips')).toBeInTheDocument();
+    });
+
+    it('filters models when the MoE arch tab is selected', async function () {
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={twoModels}
+                has_api_keys={true}
+            />,
+        );
+        await user.click(screen.getByTestId('model-select'));
+        // All 3 options visible initially.
+        expect(screen.getByTestId('model-option-10')).toBeInTheDocument();
+        expect(screen.getByTestId('model-option-11')).toBeInTheDocument();
+        expect(screen.getByTestId('model-option-12')).toBeInTheDocument();
+
+        // Click "MoE" arch tab — only the MoE option (id 12) should
+        // remain in the list. The selected-model name still appears
+        // in the trigger button + metadata card; we assert on testids
+        // scoped to the dropdown options.
+        await user.click(screen.getByRole('tab', { name: 'MoE' }));
+        expect(screen.queryByTestId('model-option-10')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('model-option-11')).not.toBeInTheDocument();
+        expect(screen.getByTestId('model-option-12')).toBeInTheDocument();
+    });
+
+    it('updates form.model_id when a model is selected', async function () {
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={twoModels}
+                has_api_keys={true}
+            />,
+        );
+        await user.click(screen.getByTestId('model-select'));
+        await user.click(screen.getByTestId('model-option-11'));
+        expect(setDataMock).toHaveBeenCalledWith('model_id', 11);
+    });
+
+    it('hides vendor chips when only one vendor is present', async function () {
+        const user = userEvent.setup();
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        await user.click(screen.getByTestId('model-select'));
+        expect(screen.queryByTestId('vendor-chips')).not.toBeInTheDocument();
     });
 });

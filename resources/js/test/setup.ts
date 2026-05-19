@@ -31,6 +31,26 @@ vi.mock('@inertiajs/react', async (importOriginal) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).route = (name?: string) => `/_test/${name ?? 'route'}`;
 
+// jsdom doesn't ship ResizeObserver; cmdk (used by the Command primitive
+// from M7 chunk 7) needs it to measure its list at render time. A no-op
+// stub is enough — we don't actually need resize callbacks to fire in
+// jsdom-rendered tests.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).ResizeObserver =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ResizeObserver ??
+    class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
+
+// jsdom also lacks Element.prototype.scrollIntoView; cmdk calls it when
+// it scrolls the highlighted item into view. Stub before any test mounts.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = function () {};
+}
+
 // Reset the DOM between tests to keep them isolated.
 afterEach(() => {
     cleanup();

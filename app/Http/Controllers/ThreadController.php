@@ -210,7 +210,18 @@ class ThreadController extends Controller
                 'vendor' => $model->vendor,
                 'name' => $model->name,
                 'display_name' => $model->display_name,
+                // Architecture + capacity fields needed by the M7
+                // chunk-7 ModelPicker filters + MetadataCard.
+                'architecture_type' => $model->architecture_type?->value,
+                'position_encoding' => $model->position_encoding?->value,
+                'layers' => $model->layers,
+                'hidden_dim' => $model->hidden_dim,
+                'attention_heads' => $model->attention_heads,
+                'moe_experts' => $model->moe_experts,
+                'moe_active_experts' => $model->moe_active_experts,
                 'context_length' => $model->context_length,
+                'pricing_input_per_million' => $model->pricing_input_per_million,
+                'pricing_output_per_million' => $model->pricing_output_per_million,
             ])
             ->all();
     }
