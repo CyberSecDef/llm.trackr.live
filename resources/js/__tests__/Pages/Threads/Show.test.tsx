@@ -55,6 +55,18 @@ vi.mock('@/Components/Viz/VizPane', () => ({
         ),
 }));
 
+// M8 chunk 7: same treatment for EmbeddingScene — jsdom can't run the
+// custom ShaderMaterial / Points pipeline. Stub renders a div so the
+// tab-toggle integration is observable.
+vi.mock('@/Components/Viz/EmbeddingScene', () => ({
+    default: ({ events, status }: { events: Array<{ event: string }>; status: string }) =>
+        React.createElement(
+            'div',
+            { 'data-testid': 'embedding-scene-stub' },
+            `emb: ${status}, ${events.length} events`,
+        ),
+}));
+
 vi.mock('@inertiajs/react', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@inertiajs/react')>();
     return {
@@ -1450,6 +1462,54 @@ describe('<ThreadShow /> — right-pane viewer toggle (M8 chunk 1)', function ()
         expect(screen.getByTestId('view-viz')).toBeDisabled();
         expect(screen.getByTestId('live-empty')).toBeInTheDocument();
         expect(screen.queryByTestId('viz-pane-stub')).not.toBeInTheDocument();
+    });
+
+    // ─── M8 chunk 7: Embeddings tab ────────────────────────────────
+
+    it('exposes an Embeddings tab in the toggle', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('view-embeddings')).toBeInTheDocument();
+        // Defaults to Viz, not Embeddings.
+        expect(screen.getByTestId('view-embeddings')).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('clicking Embeddings mounts the EmbeddingScene', async function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('view-embeddings'));
+        // Lazy import resolves asynchronously — findByTestId waits.
+        await screen.findByTestId('embedding-scene-stub');
+        expect(screen.queryByTestId('viz-pane-stub')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('live-pane')).not.toBeInTheDocument();
+    });
+
+    it('Embeddings tab remains available under reduced-motion (only Viz is disabled)', async function () {
+        stubReducedMotion(true);
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        // Embeddings is not disabled — user can switch to it manually.
+        expect(screen.getByTestId('view-embeddings')).not.toBeDisabled();
+        fireEvent.click(screen.getByTestId('view-embeddings'));
+        await screen.findByTestId('embedding-scene-stub');
     });
 
     it('forwards the lifted stream to whichever pane is visible', function () {

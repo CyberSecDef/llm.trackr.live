@@ -34,6 +34,9 @@ import type { RunEvent } from '@/types/runs';
 // M8: lazy-load the Three.js / D3 viz so its bundle (~600KB) is
 // only fetched when a user actually views a thread.
 const VizPane = lazy(() => import('@/Components/Viz/VizPane'));
+// M8 chunk 7: separate lazy import for the embedding scene so its
+// vocab data only loads when the user toggles to that tab.
+const EmbeddingScene = lazy(() => import('@/Components/Viz/EmbeddingScene'));
 import {
     AlertDialog,
     AlertDialogAction,
@@ -205,14 +208,18 @@ function RightPane({
     disabled: boolean;
 }) {
     const reducedMotion = useReducedMotion();
-    const [mode, setMode] = useState<'viz' | 'debug'>(reducedMotion ? 'debug' : 'viz');
+    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(
+        reducedMotion ? 'debug' : 'viz',
+    );
 
     // If the user's reduced-motion preference flips on while viz is
     // active, automatically fall back to debug. We don't auto-flip
     // back to viz when it flips off — the user can do that manually
     // via the toggle. setState-in-effect is correct here: we're
     // syncing local state with an external system (the OS-level
-    // media query), not deriving from props.
+    // media query), not deriving from props. Embeddings tab stays
+    // available under reduced-motion because the cloud's auto-orbit
+    // pauses once a spotlight is active.
     useEffect(() => {
         if (reducedMotion && mode === 'viz') {
             // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -270,6 +277,21 @@ function RightPane({
                 <button
                     type="button"
                     role="tab"
+                    aria-selected={mode === 'embeddings'}
+                    onClick={() => setMode('embeddings')}
+                    className={cn(
+                        'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
+                        mode === 'embeddings'
+                            ? 'bg-accent text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                    )}
+                    data-testid="view-embeddings"
+                >
+                    Embeddings
+                </button>
+                <button
+                    type="button"
+                    role="tab"
                     aria-selected={mode === 'debug'}
                     onClick={() => setMode('debug')}
                     className={cn(
@@ -284,7 +306,7 @@ function RightPane({
                 </button>
             </div>
 
-            {mode === 'viz' ? (
+            {mode === 'viz' && (
                 <Suspense
                     fallback={
                         <Card data-testid="viz-loading">
@@ -301,7 +323,21 @@ function RightPane({
                         architectureType={architectureType}
                     />
                 </Suspense>
-            ) : (
+            )}
+            {mode === 'embeddings' && (
+                <Suspense
+                    fallback={
+                        <Card data-testid="embeddings-loading">
+                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
+                                Loading embedding scatter…
+                            </CardContent>
+                        </Card>
+                    }
+                >
+                    <EmbeddingScene events={events} status={status} />
+                </Suspense>
+            )}
+            {mode === 'debug' && (
                 <LiveStreamPane
                     activeRun={activeRun}
                     events={events}
