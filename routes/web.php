@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ModelsController as AdminModelsController;
 use App\Http\Controllers\Admin\UsersController as AdminUsersController;
 use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
@@ -47,7 +48,7 @@ Route::prefix('auth')->group(function () {
 
 // Authenticated app.
 Route::middleware('auth')->group(function () {
-    Route::get('dashboard', fn () => Inertia::render('Dashboard'))
+    Route::get('dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
 
     // Placeholder pages — full IA visible from day one, each routes to a
