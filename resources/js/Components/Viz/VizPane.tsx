@@ -4,10 +4,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { X } from 'lucide-react';
 import { Card, CardContent } from '@/Components/ui/card';
 import FpsCounter from '@/Components/Viz/FpsCounter';
+import AttentionHeatmap from '@/Components/Viz/AttentionHeatmap';
 import { CascadeController } from '@/Components/Viz/CascadeController';
 import { ParticleSystem } from '@/Components/Viz/ParticleSystem';
 import { TransformerStack } from '@/Components/Viz/TransformerStack';
 import { subComponentsFor } from '@/Components/Viz/subComponents';
+import { generateAttentionPattern } from '@/lib/attentionPattern';
 import type { RunEvent } from '@/types/runs';
 
 /*
@@ -291,6 +293,7 @@ export default function VizPane({ events, status, totalLayers, architectureType 
                             layerIndex={selectedLayer}
                             totalLayers={totalLayers ?? null}
                             architectureType={architectureType ?? null}
+                            tokenCount={tokenCount}
                             onClose={() => setSelectedLayer(null)}
                         />
                     )}
@@ -316,14 +319,28 @@ function LayerDetailOverlay({
     layerIndex,
     totalLayers,
     architectureType,
+    tokenCount,
     onClose,
 }: {
     layerIndex: number;
     totalLayers: number | null;
     architectureType: string | null;
+    /** Tokens generated so far — drives the heatmap matrix size. */
+    tokenCount: number;
     onClose: () => void;
 }) {
     const subs = subComponentsFor(architectureType);
+
+    // M8 chunk 5a: synthetic attention pattern, deterministic per
+    // (tokenCount, layerIndex, totalLayers). Capped at 24×24 so the
+    // heatmap stays legible in the overlay's ~256px width — earlier
+    // tokens past the window simply aren't shown.
+    const HEATMAP_TOKENS = Math.min(tokenCount, 24);
+    const matrix =
+        HEATMAP_TOKENS > 0
+            ? generateAttentionPattern(HEATMAP_TOKENS, layerIndex, totalLayers ?? 12)
+            : [];
+
     return (
         <div
             className="absolute bottom-2 left-2 right-2 max-w-xs space-y-2 rounded-md border border-border bg-card/95 p-3 shadow-lg backdrop-blur-sm"
@@ -367,6 +384,13 @@ function LayerDetailOverlay({
                     </li>
                 ))}
             </ol>
+            {matrix.length > 0 && (
+                <AttentionHeatmap
+                    matrix={matrix}
+                    size={180}
+                    caption={`Attention · layer ${layerIndex + 1}`}
+                />
+            )}
         </div>
     );
 }
