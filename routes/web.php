@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\StreamRunController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -86,6 +87,13 @@ Route::middleware('auth')->group(function () {
     // 'is the pipeline alive?' view.
     Route::get('runs/{run}/debug', [DebugRunController::class, 'show'])
         ->name('runs.debug');
+
+    // SSE fallback for clients that can't establish a WebSocket
+    // connection (M6 chunk 5a). Long-lived response; ties up an FPM
+    // worker for the duration — see StreamRunController docblock for
+    // the deployment sizing note.
+    Route::get('runs/{run}/stream', [StreamRunController::class, 'stream'])
+        ->name('runs.stream');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {

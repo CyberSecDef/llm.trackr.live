@@ -111,6 +111,16 @@ class StreamRunJob implements ShouldQueue
                         't_ms' => $tMs,
                         'logprobs' => $chunk->logprobs,
                     ];
+                    // Incremental persistence so the SSE fallback route
+                    // (chunk 5) can observe in-flight progress without a
+                    // message broker. The terminal write below still runs
+                    // — this is purely additive. ~one UPDATE per token at
+                    // typical 50 tok/s; tolerable for SQLite in WAL mode
+                    // and Postgres at our scale.
+                    $this->run->update([
+                        'output_text' => $outputText,
+                        'token_log' => $tokenLog,
+                    ]);
                 }
 
                 foreach ($emitter->eventsForChunk($chunk, $tokenIndex, $tMs) as $event) {

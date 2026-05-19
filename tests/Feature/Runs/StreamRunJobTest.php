@@ -275,6 +275,59 @@ describe('StreamRunJob — happy path', function () {
         $key = ApiKey::where('user_id', $run->user_id)->first();
         expect($key->last_used_at)->not->toBeNull();
     });
+
+    it('writes token_log incrementally between chunks (for SSE catch-up)', function () {
+        // Use a custom client that captures the run's DB state after
+        // each yield — that's how we prove the incremental UPDATE
+        // happens mid-stream, not just at terminal.
+        $user = User::factory()->create();
+        ApiKey::factory()->for($user)->vendor('openai')->create();
+        $model = LlmModel::factory()->vendor('openai')->create();
+        $thread = Thread::factory()->for($user)->create();
+        $run = Run::factory()->for($user)->for($thread)->for($model, 'model')->create([
+            'parameters' => ['model_snapshot' => ['layers' => 32]],
+        ]);
+
+        $snapshots = [];
+        $observerClient = new class($run, $snapshots) implements LlmClientInterface
+        {
+            /** @param list<array{count: int, last_token: ?string}> $snapshots */
+            public function __construct(public Run $run, public array &$snapshots) {}
+
+            public function stream($apiKey, $model, $prompt, $params, $history = []): Generator
+            {
+                foreach (['first', ' second', ' third'] as $text) {
+                    yield new LlmTokenChunk(text: $text);
+                    $this->run->refresh();
+                    $this->snapshots[] = [
+                        'count' => count($this->run->token_log ?? []),
+                        'last_token' => $this->run->token_log[count($this->run->token_log) - 1]['token'] ?? null,
+                    ];
+                }
+            }
+
+            public function complete($apiKey, $model, $prompt, $params, $history = []): LlmCompletion
+            {
+                return new LlmCompletion(text: '', usage: new LlmUsage(0, 0));
+            }
+
+            public function vendor(): string
+            {
+                return 'openai';
+            }
+        };
+        app(LlmClientFactory::class)->register($observerClient);
+
+        Event::fake();
+        (new StreamRunJob($run))->handle(app(LlmClientFactory::class));
+
+        expect($snapshots)->toHaveCount(3);
+        expect($snapshots[0]['count'])->toBe(1);
+        expect($snapshots[0]['last_token'])->toBe('first');
+        expect($snapshots[1]['count'])->toBe(2);
+        expect($snapshots[1]['last_token'])->toBe(' second');
+        expect($snapshots[2]['count'])->toBe(3);
+    });
 });
 
 describe('StreamRunJob — error paths', function () {
