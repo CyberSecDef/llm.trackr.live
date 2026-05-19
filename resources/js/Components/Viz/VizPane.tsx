@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { Card, CardContent } from '@/Components/ui/card';
 import FpsCounter from '@/Components/Viz/FpsCounter';
 import { CascadeController } from '@/Components/Viz/CascadeController';
+import { ParticleSystem } from '@/Components/Viz/ParticleSystem';
 import { TransformerStack } from '@/Components/Viz/TransformerStack';
 import { subComponentsFor } from '@/Components/Viz/subComponents';
 import type { RunEvent } from '@/types/runs';
@@ -50,6 +51,7 @@ export default function VizPane({ events, status, totalLayers, architectureType 
     // Scene-effect-owned objects exposed via refs so other effects /
     // event handlers can poke at them without re-running the mount.
     const cascadeRef = useRef<CascadeController | null>(null);
+    const particlesRef = useRef<ParticleSystem | null>(null);
     const stackRef = useRef<TransformerStack | null>(null);
     const cameraTargetPosRef = useRef<THREE.Vector3>(DEFAULT_CAM_POS.clone());
     const orbitTargetRef = useRef<THREE.Vector3>(DEFAULT_TARGET.clone());
@@ -99,6 +101,12 @@ export default function VizPane({ events, status, totalLayers, architectureType 
 
         const cascade = new CascadeController(stack);
         cascadeRef.current = cascade;
+
+        // M8 chunk 3: token-flow streaks. One burst per token.received
+        // event, rising bottom → top, fading near the top of the stack.
+        const particles = new ParticleSystem();
+        scene.add(particles.group);
+        particlesRef.current = particles;
 
         const raycaster = new THREE.Raycaster();
         const ndc = new THREE.Vector2();
@@ -151,6 +159,7 @@ export default function VizPane({ events, status, totalLayers, architectureType 
                 stack.group.rotation.y += deltaMs * 0.00012;
             }
             cascade.update(deltaMs);
+            particles.update(deltaMs);
             controls.update();
             renderer.render(scene, camera);
             raf = requestAnimationFrame(tick);
@@ -164,7 +173,9 @@ export default function VizPane({ events, status, totalLayers, architectureType 
             resizeObs.disconnect();
             controls.dispose();
             cascadeRef.current = null;
+            particlesRef.current = null;
             stackRef.current = null;
+            particles.dispose();
             stack.dispose();
             renderer.dispose();
         };
@@ -216,19 +227,29 @@ export default function VizPane({ events, status, totalLayers, architectureType 
     }, [selectedLayer]);
 
     // Events watcher: forwards new layer.advanced events into the
-    // cascade controller. Tracks the last consumed index so a re-
-    // render with the same events doesn't re-fire waves.
+    // cascade controller, and spawns a particle burst per
+    // token.received event. Tracks the last consumed index so a
+    // re-render with the same events doesn't re-fire.
     useEffect(() => {
         const cascade = cascadeRef.current;
-        if (!cascade) return;
+        const particles = particlesRef.current;
+        if (!cascade || !particles) return;
         if (events.length < consumedEventCount.current) {
             cascade.reset();
+            particles.reset();
             consumedEventCount.current = 0;
             setSelectedLayer(null);
         }
         for (let i = consumedEventCount.current; i < events.length; i++) {
-            if (events[i].event === 'layer.advanced') {
+            const e = events[i];
+            if (e.event === 'layer.advanced') {
                 cascade.pushWave();
+            } else if (e.event === 'token.received') {
+                // Burst of 5–10 streaks per token. Random spread so
+                // repeated tokens don't produce identical visual
+                // bursts.
+                const burstSize = 5 + Math.floor(Math.random() * 6);
+                particles.spawnBurst(burstSize);
             }
         }
         consumedEventCount.current = events.length;
