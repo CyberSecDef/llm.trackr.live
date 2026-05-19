@@ -647,6 +647,82 @@ describe('<ThreadShow /> — transcript', function () {
         expect(within(card).queryByTestId('logits-distribution')).not.toBeInTheDocument();
     });
 
+    // ─── M8 chunk 6: MoERouting wired into LiveRunBody ─────────────
+
+    it('mounts MoERouting on a streaming MoE run', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'moe.routed',
+                    payload: { run_id: 51, token_index: 0, experts: [0, 3], scores: [0.7, 0.3] },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        const moeModel = [
+            {
+                ...oneModel[0],
+                architecture_type: 'moe',
+                moe_experts: 8,
+                moe_active_experts: 2,
+            },
+        ];
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={moeModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        expect(within(card).getByTestId('moe-routing')).toBeInTheDocument();
+        expect(within(card).getByTestId('moe-router-bars')).toBeInTheDocument();
+        expect(within(card).getByTestId('moe-utilization-bars')).toBeInTheDocument();
+    });
+
+    it('does not mount MoERouting on a dense (non-MoE) run', function () {
+        mockStreamState.value = {
+            events: [
+                {
+                    event: 'moe.routed',
+                    payload: { run_id: 51, token_index: 0, experts: [0, 3], scores: [0.7, 0.3] },
+                },
+            ],
+            status: 'streaming',
+            transport: 'websocket',
+            disabled: false,
+        };
+        // oneModel has architecture_type: 'dense' — the gating clause
+        // should skip the component even if MoE events arrive.
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const card = screen.getByTestId('run-51');
+        expect(within(card).queryByTestId('moe-routing')).not.toBeInTheDocument();
+    });
+
     it('keeps StaticRunBody for a completed run even with events present', function () {
         // Event stream is non-empty (could happen briefly between
         // run.completed and the 400ms terminal-reload), but the row

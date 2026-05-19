@@ -18,6 +18,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import LogitsDistribution from '@/Components/LogitsDistribution';
+import MoERouting from '@/Components/MoERouting';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import ParameterControls, {
@@ -618,6 +619,17 @@ function LiveRunBody({
                 Returns null when no logprobs are available — no
                 placeholder, no fabrication (chunk-5 decision). */}
             <LogitsDistribution events={events} />
+
+            {/* M8 chunk 6: router scores + expert utilization. Only
+                mounted for MoE models — dense runs skip the component
+                entirely (no placeholder, mirrors the chunk-5b decision). */}
+            {model?.architecture_type === 'moe' && (
+                <MoERouting
+                    events={events}
+                    totalExperts={model.moe_experts ?? null}
+                    activeExperts={model.moe_active_experts ?? null}
+                />
+            )}
 
             <LiveMetricsStrip metrics={metrics} />
         </>
