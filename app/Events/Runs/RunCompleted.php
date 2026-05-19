@@ -51,4 +51,9 @@ class RunCompleted implements ShouldBroadcastNow
             'estimated_cost' => $this->estimatedCost,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'run.completed';
+    }
 }

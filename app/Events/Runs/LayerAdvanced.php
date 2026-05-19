@@ -51,4 +51,9 @@ class LayerAdvanced implements ShouldBroadcastNow
             'total_layers' => $this->totalLayers,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'layer.advanced';
+    }
 }

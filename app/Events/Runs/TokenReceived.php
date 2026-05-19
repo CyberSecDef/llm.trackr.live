@@ -58,4 +58,9 @@ class TokenReceived implements ShouldBroadcastNow
             'is_final' => $this->isFinal,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'token.received';
+    }
 }

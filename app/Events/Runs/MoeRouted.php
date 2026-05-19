@@ -56,4 +56,9 @@ class MoeRouted implements ShouldBroadcastNow
             'scores' => $this->scores,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'moe.routed';
+    }
 }

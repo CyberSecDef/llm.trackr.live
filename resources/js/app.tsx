@@ -1,4 +1,7 @@
 import '../css/app.css';
+// Side-effect import: initializes window.Echo (or null when Reverb is unconfigured).
+// Must run before any page subscribes to a channel — that's why it's at the top.
+import './echo';
 
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';

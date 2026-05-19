@@ -50,4 +50,9 @@ class RunErrored implements ShouldBroadcastNow
             'partial_output' => $this->partialOutput,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'run.errored';
+    }
 }

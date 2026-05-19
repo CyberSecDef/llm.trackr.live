@@ -49,4 +49,9 @@ class RunStarted implements ShouldBroadcastNow
             'started_at' => now()->toIso8601String(),
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'run.started';
+    }
 }

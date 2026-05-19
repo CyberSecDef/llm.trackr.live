@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ModelsController as AdminModelsController;
 use App\Http\Controllers\Admin\UsersController as AdminUsersController;
 use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Application;
@@ -79,6 +80,12 @@ Route::middleware('auth')->group(function () {
     Route::post('threads/{thread}/runs', [RunController::class, 'store'])
         ->middleware('throttle:runs')
         ->name('threads.runs.store');
+
+    // Internal debug view of a run's streaming events. Owner-only.
+    // Real visualization page lands in M8 — this is the bare-bones
+    // 'is the pipeline alive?' view.
+    Route::get('runs/{run}/debug', [DebugRunController::class, 'show'])
+        ->name('runs.debug');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
