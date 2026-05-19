@@ -56,13 +56,13 @@ Route::middleware('auth')->group(function () {
     Route::get('threads', [ThreadController::class, 'index'])->name('threads.index');
     Route::post('threads', [ThreadController::class, 'store'])->name('threads.store');
 
-    // Per-thread detail page lands in M7 chunk 5. Until then this is a
-    // placeholder so the `store` redirect target resolves (no 404 on
-    // the create-thread flow).
-    Route::get('threads/{thread}', fn () => Inertia::render('ComingSoon', [
-        'feature' => 'Thread detail',
-        'milestone' => 'M7 chunk 5',
-    ]))->name('threads.show');
+    // Thread detail (M7 chunk 5). show / update (title + archive) /
+    // destroy (cascades runs via FK). Ownership enforced by the
+    // controller's abort_unless on every action.
+    Route::get('threads/{thread}', [ThreadController::class, 'show'])->name('threads.show');
+    Route::patch('threads/{thread}', [ThreadController::class, 'update'])->name('threads.update');
+    Route::delete('threads/{thread}', [ThreadController::class, 'destroy'])
+        ->name('threads.destroy');
 
     // For non-admins this is a placeholder until M7 ships the public
     // model browser. Admins get sent to the registry admin page.

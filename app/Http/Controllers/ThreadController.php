@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LlmModel;
+use App\Models\Run;
 use App\Models\Thread;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -97,6 +100,119 @@ class ThreadController extends Controller
         ]);
 
         return redirect()->route('threads.show', ['thread' => $thread->id]);
+    }
+
+    /**
+     * GET /threads/{thread} — thread detail (M7 chunk 5).
+     *
+     * Returns the thread, its runs in `sequence_in_thread` order, and
+     * the subset of models the user can actually run (vendors they
+     * have an API key for, with the Meta→Together fallback honored).
+     * `has_api_keys` drives the empty-state copy in the prompt-input
+     * footer.
+     */
+    public function show(Request $request, Thread $thread): Response
+    {
+        abort_unless($thread->user_id === $request->user()->id, 403);
+
+        $runs = $thread->runs()
+            ->orderBy('sequence_in_thread')
+            ->get()
+            ->map(fn (Run $run) => [
+                'id' => $run->id,
+                'sequence_in_thread' => $run->sequence_in_thread,
+                'status' => $run->status->value,
+                'prompt' => $run->prompt,
+                'output_text' => $run->output_text,
+                'error_message' => $run->error_message,
+                'input_tokens' => $run->input_tokens,
+                'output_tokens' => $run->output_tokens,
+                'duration_ms' => $run->duration_ms,
+                'estimated_cost' => $run->estimated_cost,
+                'model_id' => $run->model_id,
+                'created_at' => $run->created_at?->toIso8601String(),
+            ]);
+
+        return Inertia::render('Threads/Show', [
+            'thread' => [
+                'id' => $thread->id,
+                'title' => $thread->title,
+                'archived' => (bool) $thread->archived,
+                'tags' => $thread->tags ?? [],
+                'last_activity_at' => $thread->last_activity_at?->toIso8601String(),
+                'created_at' => $thread->created_at?->toIso8601String(),
+                'default_model_id' => $thread->default_model_id,
+            ],
+            'runs' => $runs,
+            'usable_models' => $this->usableModels($request->user()),
+            'has_api_keys' => $request->user()->apiKeys()->exists(),
+        ]);
+    }
+
+    /**
+     * PATCH /threads/{thread} — update title and/or archived flag.
+     * Other thread fields (system_prompt, default_model_id, tags)
+     * will get their own endpoints once their UI lands.
+     */
+    public function update(Request $request, Thread $thread): RedirectResponse
+    {
+        abort_unless($thread->user_id === $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'title' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'archived' => ['sometimes', 'boolean'],
+        ]);
+
+        $thread->fill($validated)->save();
+
+        return redirect()->back();
+    }
+
+    /**
+     * DELETE /threads/{thread} — hard-delete. Runs cascade via the
+     * `cascadeOnDelete` FK in the runs table; no application logic
+     * needed beyond the ownership check.
+     */
+    public function destroy(Request $request, Thread $thread): RedirectResponse
+    {
+        abort_unless($thread->user_id === $request->user()->id, 403);
+
+        $thread->delete();
+
+        return redirect()->route('threads.index');
+    }
+
+    /**
+     * Models the user could actually run right now — restricted to
+     * vendors where they have an API key. Mirrors the Meta→Together
+     * fallback from RunService::resolveApiKey so the dropdown doesn't
+     * grey out a Meta model when the user has a Together key.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function usableModels(User $user): array
+    {
+        $vendors = $user->apiKeys()->pluck('vendor')->unique()->all();
+        if (in_array('together', $vendors, true) && ! in_array('meta', $vendors, true)) {
+            $vendors[] = 'meta';
+        }
+        if (empty($vendors)) {
+            return [];
+        }
+
+        return LlmModel::query()
+            ->whereIn('vendor', $vendors)
+            ->orderBy('vendor')
+            ->orderBy('display_name')
+            ->get()
+            ->map(fn (LlmModel $model) => [
+                'id' => $model->id,
+                'vendor' => $model->vendor,
+                'name' => $model->name,
+                'display_name' => $model->display_name,
+                'context_length' => $model->context_length,
+            ])
+            ->all();
     }
 
     /**
