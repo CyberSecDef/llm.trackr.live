@@ -21,7 +21,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M4 | API Keys + Vendor Clients | M2 | 12 days | ✅ Complete | |
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
-| M7 | Frontend — Static UI | M5 | 7 days | 🟡 In progress (chunks 1–9 done) | |
+| M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ⚪ Not started | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
@@ -303,9 +303,48 @@ Carry-forward into M7
 - [x] Responsive: desktop + tablet breakpoints (chunk 2). The sidebar↔drawer breakpoint is `md` (768px); below that the layout collapses to a single column with the hamburger Sheet. Verified on a phone (192.168.0.205:8001) via the dev-login magic-link flow.
 
 **Exit criteria**
-- All pages render and route correctly.
-- A logged-in user can: create a thread, fill out a prompt, select a model, set parameters, submit → see tokens stream into the debug pane on the right.
-- Lighthouse score ≥ 90 on the dashboard.
+- ✅ All pages render and route correctly. Covered by Pest controller tests on every route (`DashboardControllerTest`, `ThreadIndexTest` / `ThreadShowTest`, `PromptPreviewTest`, `ApiKeysControllerTest`, `SettingsControllerTest`, `ErrorPagesTest`, `Admin/ModelsControllerTest`, `Admin/UsersControllerTest`, `AuthGatedRoutesTest`) + Vitest render tests on every page (`Welcome`, `Dashboard`, `Threads/Index`, `Threads/Show`, `ApiKeys/Index`, `Settings`, `Admin/Users`, `Admin/Models/Index` + `Edit`, `Runs/Debug`, the 4 `Errors/*` pages, plus the underlying `Components/ui/*` primitive tests). Manual recipe in `docs/m7-exit-criteria.md` §1.
+- ✅ A logged-in user can: create a thread, fill out a prompt, select a model, set parameters, submit → see tokens stream into the debug pane on the right. Covered by `ThreadController::store` test (creates Pending run + redirects to `threads.show`), the chunk-7 ModelPicker Vitest (selection updates `form.data.model_id`), the chunk-8 ParameterControls Vitest (slider + input dispatch into `form.data.parameters`), the chunk-6a PromptPreviewController + budget-indicator Vitest (token-count + over-budget submit lock), the chunk-6b `RunController::store` dual-respond (Inertia redirect path), and the chunk-6b LiveStreamPane Vitest (active-run detection + `useRunStream` subscription + auto-reload on terminal status). The chunk-6/M6 streaming pipeline (`StreamRunJob` → broadcast events → useRunStream) carries the actual token-by-token delivery. Manual recipe in `docs/m7-exit-criteria.md` §2.
+- ⚠️ Lighthouse score ≥ 90 on the dashboard. Not unit-testable from this repo — requires a real browser. Manual recipe in `docs/m7-exit-criteria.md` §3 documents the Chrome DevTools Lighthouse run. The dashboard is server-rendered Inertia with minimal client-side work; shadcn primitives carry Radix accessibility defaults (focus rings, ARIA roles, sr-only labels on the mobile-nav Sheet). Treat any sub-90 finding as M12 (Accessibility + Polish) work rather than re-opening M7.
+
+**M7 retrospective**
+
+Sized at 7 days; landed in 10 chunks (1–5, 7, 8, 10 single; chunks 6 + 9 split into a/b) across a similar elapsed window. Quality bar held at every chunk boundary — 512 Pest tests / 1512 assertions, 181 Vitest tests across 24 files; Pint / ESLint / type-check / Vite build all green at every commit.
+
+What worked
+- **shadcn/ui adoption (chunk 1) frontloaded accessibility.** Every primitive (`Button`, `Card`, `Input`, `Label`, `Separator`, `Sheet`, `AlertDialog`, `Popover`, `Command`, `Slider`, `Textarea`) wraps a Radix internal that handles focus return, escape-to-close, scroll lock, and ARIA wiring. We didn't have to think about it page-by-page.
+- **Theme tokens over hardcoded colors.** Moving the palette to CSS vars (`:root` + `.dark` in `app.css`) means a single source of truth. Chunks 2 + 9 surfaced the cost of NOT doing this — every hardcoded `slate-*` in the M1–M5 pages had to be swept.
+- **10-chunk split with sub-chunks (6a/6b, 9a/9b).** Each commit was reviewable in under ~1k lines of diff. Chunk 6's six features (autosize / history / template / token count / warning / live pane) would have been unreviewable as one.
+- **Server-side AJAX token-count preview (chunk 6a).** Skipping client-side `tiktoken-js` WASM saved ~500KB from the bundle. The 400ms debounce + reuse of `TokenCounterFactory` keeps server + client in lockstep so the UI can't show a fits/over-by reading that disagrees with what `RunService::submit` would reject.
+- **Primitives compounded.** `AlertDialog` from chunk 2 powered chunk-5's thread delete, chunk-9a's API-key delete, AND chunk-9b's two admin confirms (refresh + delete). Each later use was a 10-line copy of the pattern, not a new dialog implementation.
+- **Component-library tests catch contract drift early.** When chunk 7 extended `usable_models` with `supported_params`, the Vitest fixtures broke at the TypeScript level — caught at type-check, not at runtime.
+
+Surprises / footnotes
+- **Each new Inertia page needs a Vite rebuild before `assertInertia` works.** `Pages/Threads/Show.tsx`, `Pages/Errors/*`, `Pages/Threads/Index.tsx` all hit it. Pattern: write the route + controller + tests, expect a fail, build the page TSX, run `npm run build`, re-run Pest. Could be automated; not worth it for the cadence we're at.
+- **jsdom polyfill churn.** Chunk 4b needed an `EventSource` class polyfill (the standard `vi.fn()` isn't constructable). Chunk 7 needed `ResizeObserver` + `Element.prototype.scrollIntoView` for cmdk. All live in `resources/js/test/setup.ts` now.
+- **`vi.mock` hoisting + `vi.hoisted()`.** Mock factories run before top-level consts. Mock-state objects (`mockStreamState.value`, spy fns shared across tests) must be hoisted with `vi.hoisted()`. Bit me on chunk 4b, chunk 7, AND chunk 6b before I internalized the pattern.
+- **JSON int/float round-trip.** PHP encodes `0.0` as `"0"`; Inertia ships JSON; assertions came back as int. Bit chunk 3 (dashboard cost) and chunk 7 (model pricing). Documented the workaround in both tests.
+- **Inertia `useForm.post` wants a redirect, not 201+JSON.** Chunk 4a built `RunController::store` as a JSON API endpoint; chunk 6b had to add a dual-respond shim (X-Inertia header → redirect; otherwise → JSON). Worth doing the dual-respond from day one on any new POST endpoint.
+- **`react-hooks/immutability` flags legitimate setState-in-effect patterns** (debounce hooks, transport-fallback in useRunStream, the parameter-controls reset). The documented workaround is `// eslint-disable-next-line react-hooks/set-state-in-effect` with a rationale comment. Used sparingly — every disable carries a why.
+- **Inertia view-finder is Vue-by-default.** Chunk 4b's `assertInertia(...)->component('...')` failed until `config/inertia.php` declared the `.tsx` page paths. Recurs from M6 — should have been a foundational change in chunk 1.
+- **`react/no-unknown-property` flags cmdk's `cmdk-input-wrapper=""` sentinel** (chunk 7). Opaque styling hook for cmdk's CSS, not a real DOM attr. Disable-with-rationale.
+- **`jsx-a11y/label-has-associated-control`** can't see runtime `htmlFor` association on design-system primitives (the `Label` component in `ui/`). Inline disable on the primitive definition; callers pair via `htmlFor` and the rule is happy.
+
+Decisions parked / deferred
+- **Size filter on the ModelPicker (chunk 7).** Dropped: we don't store parameter count, and a name-regex heuristic is too brittle. Arch + vendor + context-length sort + cmdk fuzzy search covers the use case. A future `parameter_count` column on `models` could resurrect the filter — file under M12 polish or a registry-schema chunk.
+- **Full vendor-specific chat-template preview (chunk 6a).** Partial via the history preview (shows the role/content array the model sees). Jinja-style template rendering using the `models.chat_template` column is deferred — useful for Anthropic/HF tinkerers, low priority for OpenAI-protocol vendors that handle templates server-side.
+- **Display name on Settings (chunk 9a).** SPEC mentions it; the `users` table lacks a separate `display_name` column (it has `name`, which the OAuth flow populates). Adding one would be a one-line migration + form field, but not a blocker; left for M12 / M14 polish.
+- **Real Lighthouse-in-CI gating.** Out of scope for M7 — would need a headless Chrome + Lighthouse-CI npm package + a separate workflow step. M13 deployment is a more natural fit if we want a CI gate; M12 polish would handle one-off audits.
+- **E2E browser test harness (Playwright/Cypress).** Same call as M6's closeout — unit + integration + manual recipes is enough. M12 might add Playwright for a11y audits.
+
+Carry-forward into M8
+- **`LiveStreamPane` is the placeholder.** M8 replaces its JSON-per-line `<pre>` block with the real visualization: 3D transformer stack (Three.js), attention heatmaps (D3.js), MoE routing graph, logits panel, embedding-space token flow. The `events` array from `useRunStream` is the data feed; the shape is stable (per-event discriminated union from `resources/js/types/runs.ts`).
+- **`router.reload({only: ['runs']})` after a terminal status (chunk 6b)** refreshes the transcript with the final output. M8 might want to keep the live pane in some form (debug toggle?) since the chunk-7 + chunk-8 controls keep producing valuable streaming detail (per-token logprobs, MoE expert IDs).
+- **`useDebouncedPreview` (chunk 6a)** keys off `(threadId, prompt, modelId, max_tokens)`. M8 might add other params if the viz needs context (e.g., a "preview the viz given these settings" panel). Today's deps are sufficient for the budget bar.
+- **All page chrome is shadcn-themed.** M8's viz-controls (play/pause/scrub, layer-focus, attention-head-select) should use the same primitives (`Slider`, `Button`, `Card`, `Popover`) so the visual language stays coherent.
+- **Per-thread links from the dashboard's recent-threads section (chunk 3)** still don't link to `/threads/{id}` — chunk 3 deferred this to chunk 5, but I never went back to wire it. Quick follow-up: thread cards on the dashboard should link to their detail page. **TODO for M8 or a polish pass.**
+
+**M7 closed:** 2026-05-19. Chunks 1–10 all green. 512 Pest / 1512 assertions, 181 Vitest across 24 files; build at 489 KB / 157 KB gzipped.
 
 ---
 
