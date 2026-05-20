@@ -37,4 +37,15 @@ return [
      * before it gets killed.
      */
     'max_duration_ms' => (int) env('GIF_MAX_DURATION_MS', 300_000),
+
+    /*
+     * Path to the Node script that drives the headless-Chrome
+     * frame capture (M10 chunk 4). The script itself ships in a
+     * follow-up chunk; the renderer raises a clear error if the
+     * file doesn't exist at this path.
+     */
+    'node_script_path' => env(
+        'GIF_NODE_SCRIPT_PATH',
+        base_path('node-scripts/puppeteer-export.cjs'),
+    ),
 ];

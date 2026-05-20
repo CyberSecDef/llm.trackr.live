@@ -23,8 +23,13 @@ describe('GifRendererFactory', function () {
         expect(app(GifRendererFactory::class)->make('svg'))->toBeInstanceOf(SvgRenderer::class);
     });
 
-    it('falls back to NullRenderer for puppeteer driver (chunk 4 pending)', function () {
-        expect(app(GifRendererFactory::class)->make('puppeteer'))->toBeInstanceOf(NullRenderer::class);
+    it('resolves puppeteer driver to SvgRenderer with PuppeteerFrameRenderer injected (chunk 4)', function () {
+        // The factory wires 'puppeteer' to the same SvgRenderer
+        // orchestrator + a Puppeteer frame renderer. Calling
+        // render() on it without a Chromium binary surfaces the
+        // chunk-4 fallback exception.
+        $renderer = app(GifRendererFactory::class)->make('puppeteer');
+        expect($renderer)->toBeInstanceOf(SvgRenderer::class);
     });
 
     it('explicit driver override beats config', function () {

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Exports\ChromiumDetector;
 use App\Services\Exports\FfmpegEncoder;
 use App\Services\Exports\FrameRenderer;
 use App\Services\Exports\GifRenderer;
@@ -66,6 +67,11 @@ class AppServiceProvider extends ServiceProvider
         // operator-error fallback (chunk 6 will use it when ffmpeg
         // isn't on PATH).
         $this->app->bind(VideoEncoder::class, FfmpegEncoder::class);
+
+        // M10 chunk 4: ChromiumDetector is a singleton so the
+        // boot-time binary check runs once. PuppeteerFrameRenderer
+        // pulls it via DI for the fallback-detection path.
+        $this->app->singleton(ChromiumDetector::class);
     }
 
     public function boot(): void

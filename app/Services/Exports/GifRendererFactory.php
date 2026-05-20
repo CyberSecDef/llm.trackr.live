@@ -36,9 +36,25 @@ class GifRendererFactory
             // container so chunk 3 can swap NullVideoEncoder for
             // FfmpegEncoder with a single binding change.
             'svg' => $this->container->make(SvgRenderer::class),
-            // Chunk 4 lands Puppeteer; until then both keep
-            // throwing-via-NullRenderer for fast-failure visibility.
-            'puppeteer' => new NullRenderer,
+
+            // M10 chunk 4 skeleton: reuse the SvgRenderer orchestrator
+            // (the chunk-2 design point — encoder + storage are
+            // renderer-agnostic) but inject a PuppeteerFrameRenderer
+            // built from the configured node script path. The
+            // PuppeteerFrameRenderer raises ChromiumUnavailableException
+            // when Chromium is missing — chunk 6's fallback will catch
+            // this and re-dispatch with the SVG renderer.
+            'puppeteer' => new SvgRenderer(
+                frameRenderer: new PuppeteerFrameRenderer(
+                    $this->container->make(ChromiumDetector::class),
+                    (string) config(
+                        'gif_export.node_script_path',
+                        base_path('node-scripts/puppeteer-export.cjs'),
+                    ),
+                ),
+                encoder: $this->container->make(VideoEncoder::class),
+                storage: $this->container->make(ExportStorage::class),
+            ),
             default => new NullRenderer,
         };
     }
