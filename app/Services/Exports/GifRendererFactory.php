@@ -2,6 +2,8 @@
 
 namespace App\Services\Exports;
 
+use Illuminate\Contracts\Container\Container;
+
 /**
  * Picks the active renderer per the `gif_export.renderer` config.
  *
@@ -22,16 +24,20 @@ namespace App\Services\Exports;
  */
 class GifRendererFactory
 {
+    public function __construct(private readonly Container $container) {}
+
     public function make(?string $driver = null): GifRenderer
     {
         $driver ??= (string) config('gif_export.renderer', 'null');
 
         return match ($driver) {
-            // Real renderers will replace the NullRenderer fallback
-            // when chunks 2 and 4 land. For now both `svg` and
-            // `puppeteer` resolve to Null so misconfigurations don't
-            // silently produce empty files.
-            'svg' => new NullRenderer,
+            // M10 chunk 2: 'svg' resolves to SvgRenderer. Its
+            // FrameRenderer + VideoEncoder are resolved from the
+            // container so chunk 3 can swap NullVideoEncoder for
+            // FfmpegEncoder with a single binding change.
+            'svg' => $this->container->make(SvgRenderer::class),
+            // Chunk 4 lands Puppeteer; until then both keep
+            // throwing-via-NullRenderer for fast-failure visibility.
             'puppeteer' => new NullRenderer,
             default => new NullRenderer,
         };

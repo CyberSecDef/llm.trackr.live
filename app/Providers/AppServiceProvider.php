@@ -2,8 +2,12 @@
 
 namespace App\Providers;
 
+use App\Services\Exports\FrameRenderer;
 use App\Services\Exports\GifRenderer;
 use App\Services\Exports\GifRendererFactory;
+use App\Services\Exports\NullVideoEncoder;
+use App\Services\Exports\SvgFrameRenderer;
+use App\Services\Exports\VideoEncoder;
 use App\Services\Llm\Clients\AnthropicClient;
 use App\Services\Llm\Clients\GoogleGeminiClient;
 use App\Services\Llm\Clients\GroqClient;
@@ -51,6 +55,14 @@ class AppServiceProvider extends ServiceProvider
             GifRenderer::class,
             fn ($app) => $app->make(GifRendererFactory::class)->make(),
         );
+
+        // M10 chunk 2: FrameRenderer + VideoEncoder default bindings.
+        // SvgRenderer asks for these via DI; chunk 3 swaps the
+        // encoder for FfmpegEncoder; chunk 4 adds a Puppeteer
+        // FrameRenderer; chunk 6's fallback swaps based on Chromium
+        // availability at boot.
+        $this->app->bind(FrameRenderer::class, SvgFrameRenderer::class);
+        $this->app->bind(VideoEncoder::class, NullVideoEncoder::class);
     }
 
     public function boot(): void
