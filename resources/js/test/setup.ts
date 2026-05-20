@@ -12,6 +12,14 @@ import React from 'react';
 // jsdom-safe rule config.
 expect.extend(toHaveNoViolations);
 
+// M12 chunk 8: default `useWebGL2Support` to `true` in every test
+// so jsdom (which has no WebGL context) doesn't auto-flip every viz
+// page to the Debug-tab fallback. Tests that exercise the WebGL-
+// unsupported path override this with `vi.mock(...)` locally.
+vi.mock('@/hooks/useWebGL2Support', () => ({
+    useWebGL2Support: () => true,
+}));
+
 // Inertia's components/hooks require the createInertiaApp HeadManager
 // + PageContext that only exist at runtime. In isolated component tests
 // we stub the bits we use so renders don't crash.

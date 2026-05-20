@@ -11,6 +11,7 @@ import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import { cn } from '@/lib/utils';
 import type { RunEvent } from '@/types/runs';
@@ -308,16 +309,20 @@ function ReplayRightPane({
     architectureType: string | null;
 }) {
     const reducedMotion = useReducedMotion();
-    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(
-        reducedMotion ? 'debug' : 'viz',
-    );
+    const webgl2Supported = useWebGL2Support();
+    // M12 chunk 8 — see Threads/Show for the gate rationale.
+    const vizDisabled = reducedMotion || !webgl2Supported;
+    const embeddingsDisabled = !webgl2Supported;
+    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(vizDisabled ? 'debug' : 'viz');
 
     useEffect(() => {
-        if (reducedMotion && mode === 'viz') {
+        if (mode === 'viz' && vizDisabled) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setMode('debug');
+        } else if (mode === 'embeddings' && embeddingsDisabled) {
+            setMode('debug');
         }
-    }, [reducedMotion, mode]);
+    }, [vizDisabled, embeddingsDisabled, mode]);
 
     return (
         <div className="space-y-2">
@@ -332,14 +337,21 @@ function ReplayRightPane({
                     role="tab"
                     aria-selected={mode === 'viz'}
                     onClick={() => setMode('viz')}
-                    disabled={reducedMotion}
+                    disabled={vizDisabled}
+                    title={
+                        !webgl2Supported
+                            ? 'Visualization disabled because this browser does not support WebGL 2.0.'
+                            : reducedMotion
+                              ? 'Visualization disabled because prefers-reduced-motion is set.'
+                              : undefined
+                    }
                     className={cn(
                         'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'viz'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        reducedMotion && 'cursor-not-allowed opacity-50',
+                        vizDisabled && 'cursor-not-allowed opacity-50',
                     )}
                     data-testid="view-viz"
                 >
@@ -350,12 +362,19 @@ function ReplayRightPane({
                     role="tab"
                     aria-selected={mode === 'embeddings'}
                     onClick={() => setMode('embeddings')}
+                    disabled={embeddingsDisabled}
+                    title={
+                        embeddingsDisabled
+                            ? 'Embeddings disabled because this browser does not support WebGL 2.0.'
+                            : undefined
+                    }
                     className={cn(
                         'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'embeddings'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                        embeddingsDisabled && 'cursor-not-allowed opacity-50',
                     )}
                     data-testid="view-embeddings"
                 >
@@ -378,6 +397,18 @@ function ReplayRightPane({
                     Debug
                 </button>
             </div>
+
+            {!webgl2Supported && (
+                <div
+                    className="rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
+                    role="note"
+                    data-testid="webgl-unsupported-notice"
+                >
+                    Your browser doesn&apos;t expose WebGL 2.0 — the 3D visualization + embedding
+                    scenes are unavailable. The Debug tab still works and shows the same event
+                    stream as text.
+                </div>
+            )}
 
             {mode === 'viz' && (
                 <Suspense

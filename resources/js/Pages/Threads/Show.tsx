@@ -18,6 +18,7 @@ import { lazy, Suspense } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
@@ -234,24 +235,28 @@ function RightPane({
     disabled: boolean;
 }) {
     const reducedMotion = useReducedMotion();
-    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(
-        reducedMotion ? 'debug' : 'viz',
-    );
+    const webgl2Supported = useWebGL2Support();
+    // M12 chunk 8: WebGL 2 unavailable disables BOTH 3D tabs (Viz +
+    // Embeddings both need a WebGL 2 context). Reduced-motion only
+    // disables the Viz tab — the embedding cloud's auto-orbit
+    // pauses once a spotlight is active, so it's still consumable.
+    const vizDisabled = reducedMotion || !webgl2Supported;
+    const embeddingsDisabled = !webgl2Supported;
+    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(vizDisabled ? 'debug' : 'viz');
 
-    // If the user's reduced-motion preference flips on while viz is
-    // active, automatically fall back to debug. We don't auto-flip
-    // back to viz when it flips off — the user can do that manually
-    // via the toggle. setState-in-effect is correct here: we're
-    // syncing local state with an external system (the OS-level
-    // media query), not deriving from props. Embeddings tab stays
-    // available under reduced-motion because the cloud's auto-orbit
-    // pauses once a spotlight is active.
+    // If reduced-motion flips on or WebGL availability flips off
+    // (the latter shouldn't happen mid-session but we re-probe on
+    // mount) while a now-disabled tab is active, fall through to
+    // debug. We don't auto-restore to viz/embeddings on the reverse
+    // flip — the user can re-select manually.
     useEffect(() => {
-        if (reducedMotion && mode === 'viz') {
+        if (mode === 'viz' && vizDisabled) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setMode('debug');
+        } else if (mode === 'embeddings' && embeddingsDisabled) {
+            setMode('debug');
         }
-    }, [reducedMotion, mode]);
+    }, [vizDisabled, embeddingsDisabled, mode]);
 
     // Terminal-status reload — fires regardless of which view is
     // active so the transcript on the left always refreshes with the
@@ -283,11 +288,13 @@ function RightPane({
                     role="tab"
                     aria-selected={mode === 'viz'}
                     onClick={() => setMode('viz')}
-                    disabled={reducedMotion}
+                    disabled={vizDisabled}
                     title={
-                        reducedMotion
-                            ? 'Visualization disabled because prefers-reduced-motion is set.'
-                            : undefined
+                        !webgl2Supported
+                            ? 'Visualization disabled because this browser does not support WebGL 2.0.'
+                            : reducedMotion
+                              ? 'Visualization disabled because prefers-reduced-motion is set.'
+                              : undefined
                     }
                     className={cn(
                         'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
@@ -295,7 +302,7 @@ function RightPane({
                         mode === 'viz'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        reducedMotion && 'cursor-not-allowed opacity-50',
+                        vizDisabled && 'cursor-not-allowed opacity-50',
                     )}
                     data-testid="view-viz"
                 >
@@ -306,12 +313,19 @@ function RightPane({
                     role="tab"
                     aria-selected={mode === 'embeddings'}
                     onClick={() => setMode('embeddings')}
+                    disabled={embeddingsDisabled}
+                    title={
+                        embeddingsDisabled
+                            ? 'Embeddings disabled because this browser does not support WebGL 2.0.'
+                            : undefined
+                    }
                     className={cn(
                         'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'embeddings'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                        embeddingsDisabled && 'cursor-not-allowed opacity-50',
                     )}
                     data-testid="view-embeddings"
                 >
@@ -334,6 +348,18 @@ function RightPane({
                     Debug
                 </button>
             </div>
+
+            {!webgl2Supported && (
+                <div
+                    className="rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
+                    role="note"
+                    data-testid="webgl-unsupported-notice"
+                >
+                    Your browser doesn&apos;t expose WebGL 2.0 — the 3D visualization + embedding
+                    scenes are unavailable. The Debug tab still works and shows the same event
+                    stream as text.
+                </div>
+            )}
 
             {mode === 'viz' && (
                 <Suspense
