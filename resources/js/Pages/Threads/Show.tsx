@@ -719,7 +719,7 @@ function LiveRunBody({
                 <p className="whitespace-pre-wrap text-sm" data-testid="live-assistant-text">
                     {metrics.liveText}
                     <span
-                        className="ml-0.5 inline-block animate-pulse text-foreground/70"
+                        className="ml-0.5 inline-block motion-safe:animate-pulse text-foreground/70"
                         aria-hidden="true"
                         data-testid="live-cursor"
                     >
@@ -1202,7 +1202,8 @@ function LiveStreamPane({
                         <Radio
                             className={cn(
                                 'h-3 w-3',
-                                status === 'streaming' && 'text-emerald-400 animate-pulse',
+                                status === 'streaming' &&
+                                    'text-emerald-400 motion-safe:animate-pulse',
                             )}
                             aria-hidden="true"
                         />

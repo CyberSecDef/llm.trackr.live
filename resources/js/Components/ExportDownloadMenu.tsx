@@ -174,7 +174,7 @@ function MenuItem({
             data-testid={testId}
         >
             {isRendering ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                <Loader2 className="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />
             ) : (
                 <Download className="h-3 w-3" aria-hidden="true" />
             )}

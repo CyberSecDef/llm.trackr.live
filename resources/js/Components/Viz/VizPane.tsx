@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { deriveVizAnnouncement } from '@/lib/vizAnnouncement';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { X } from 'lucide-react';
@@ -269,6 +270,10 @@ export default function VizPane({ events, status, totalLayers, architectureType 
     const tokenCount = events.filter((e) => e.event === 'token.received').length;
     const showOverlay = status === 'idle' && tokenCount === 0;
 
+    // M12 chunk 3: screen-reader announcement. See vizAnnouncement.ts
+    // for the milestone-not-per-event rationale.
+    const announcement = useMemo(() => deriveVizAnnouncement(events, 'Run started.'), [events]);
+
     return (
         <Card data-testid="viz-pane">
             <CardContent className="relative p-0">
@@ -279,6 +284,14 @@ export default function VizPane({ events, status, totalLayers, architectureType 
                         data-testid="viz-canvas"
                         aria-label="Run visualization. Click a layer to zoom in."
                     />
+                    <span
+                        role="status"
+                        aria-live="polite"
+                        className="sr-only"
+                        data-testid="viz-announcer"
+                    >
+                        {announcement}
+                    </span>
                     <FpsCounter />
                     {showOverlay && (
                         <div

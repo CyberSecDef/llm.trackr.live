@@ -224,7 +224,7 @@ function ReplayBody({
                         {metrics.liveText}
                         {metrics.outputTokens < (run.output_tokens ?? Infinity) && (
                             <span
-                                className="ml-0.5 inline-block animate-pulse text-foreground/70"
+                                className="ml-0.5 inline-block motion-safe:animate-pulse text-foreground/70"
                                 aria-hidden="true"
                                 data-testid="replay-cursor"
                             >

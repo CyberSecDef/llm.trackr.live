@@ -80,7 +80,7 @@ export default function PlaybackControls({
                     className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-300"
                     data-testid="playback-live-pill"
                 >
-                    <Radio className="h-2.5 w-2.5 animate-pulse" aria-hidden="true" />
+                    <Radio className="h-2.5 w-2.5 motion-safe:animate-pulse" aria-hidden="true" />
                     Live
                 </span>
             ) : (

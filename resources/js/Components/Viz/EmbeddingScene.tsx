@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { deriveVizAnnouncement } from '@/lib/vizAnnouncement';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Card, CardContent } from '@/Components/ui/card';
@@ -251,6 +252,13 @@ export default function EmbeddingScene({ events, status }: EmbeddingSceneProps) 
 
     const tokenCount = events.filter((e) => e.event === 'token.received').length;
 
+    // M12 chunk 3: same milestone announcer as VizPane (see
+    // vizAnnouncement.ts for the rationale).
+    const announcement = useMemo(
+        () => deriveVizAnnouncement(events, 'Embedding scene loaded.'),
+        [events],
+    );
+
     return (
         <Card data-testid="embedding-scene">
             <CardContent className="relative p-0">
@@ -261,6 +269,14 @@ export default function EmbeddingScene({ events, status }: EmbeddingSceneProps) 
                         data-testid="embedding-canvas"
                         aria-label="Vocabulary embedding scatter"
                     />
+                    <span
+                        role="status"
+                        aria-live="polite"
+                        className="sr-only"
+                        data-testid="embedding-announcer"
+                    >
+                        {announcement}
+                    </span>
                     <FpsCounter />
                     <div
                         className="pointer-events-none absolute top-2 left-2 right-2 space-y-1"
