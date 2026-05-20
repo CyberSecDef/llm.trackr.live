@@ -10,6 +10,7 @@ use App\Http\Controllers\PromptPreviewController;
 use App\Http\Controllers\ReplayController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
+use App\Http\Controllers\RunExportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
 use App\Http\Controllers\ThreadController;
@@ -126,6 +127,12 @@ Route::middleware('auth')->group(function () {
     // generation per SPEC §10.1.
     Route::get('threads/{thread}/runs/{run}/replay', [ReplayController::class, 'show'])
         ->name('threads.runs.replay');
+
+    // JSON export of a single run (M9 chunk 3). Owner-only.
+    // Content-Disposition: attachment → browser downloads as
+    // run-{id}.json instead of rendering inline.
+    Route::get('runs/{run}/export.json', [RunExportController::class, 'show'])
+        ->name('runs.export');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
