@@ -183,4 +183,13 @@ describe('<Replay />', () => {
         const back = screen.getByText('Back to thread').closest('a');
         expect(back?.getAttribute('href')).toBe('/threads/1');
     });
+
+    it('M9 chunk 5: header has a Download JSON button pointing at /runs/{id}/export.json', () => {
+        render(<Replay thread={thread} run={baseRun} events={events} model={baseModel} />);
+        const dlButton = screen.getByTestId('replay-download');
+        const anchor = dlButton.tagName === 'A' ? dlButton : dlButton.querySelector('a');
+        expect(anchor).not.toBeNull();
+        expect(anchor!.getAttribute('href')).toBe(`/runs/${baseRun.id}/export.json`);
+        expect(anchor!.getAttribute('download')).toBe(`run-${baseRun.id}.json`);
+    });
 });

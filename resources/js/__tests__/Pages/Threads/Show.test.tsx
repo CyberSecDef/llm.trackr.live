@@ -306,6 +306,25 @@ describe('<ThreadShow /> — header', function () {
         await user.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(routerDelete).not.toHaveBeenCalled();
     });
+
+    // ─── M9 chunk 5: thread Export button in header ─────────────────
+
+    it('shows an Export button in the thread header pointing at /threads/{id}/export.json', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const exportBtn = screen.getByTestId('export-thread');
+        // asChild renders Button as an <a>; href + download attrs are on it.
+        const anchor = exportBtn.tagName === 'A' ? exportBtn : exportBtn.querySelector('a');
+        expect(anchor).not.toBeNull();
+        expect(anchor!.getAttribute('href')).toBe(`/threads/${baseThread.id}/export.json`);
+        expect(anchor!.getAttribute('download')).toBe(`thread-${baseThread.id}.json`);
+    });
 });
 
 describe('<ThreadShow /> — transcript', function () {
@@ -807,6 +826,54 @@ describe('<ThreadShow /> — transcript', function () {
             />,
         );
         expect(screen.getByTestId(`replay-link-${sampleRun.id}`)).toBeInTheDocument();
+    });
+
+    // ─── M9 chunk 5: Download links + thread Export button ─────────
+
+    it('shows a JSON Download link on terminal runs pointing at /runs/{id}/export.json', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, status: 'complete' }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const link = screen.getByTestId(`download-link-${sampleRun.id}`);
+        expect(link).toBeInTheDocument();
+        expect(link.getAttribute('href')).toBe(`/runs/${sampleRun.id}/export.json`);
+        expect(link.getAttribute('download')).toBe(`run-${sampleRun.id}.json`);
+    });
+
+    it('does NOT show a Download link on streaming runs', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 52,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.queryByTestId('download-link-52')).not.toBeInTheDocument();
+    });
+
+    it('shows a Download link on errored runs (matches Replay placement)', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, status: 'error', error_message: 'oops' }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId(`download-link-${sampleRun.id}`)).toBeInTheDocument();
     });
 
     it('does NOT show a Replay link on streaming runs', function () {

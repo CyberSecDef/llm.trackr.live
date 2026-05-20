@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Radio } from 'lucide-react';
+import { ArrowLeft, Download, Radio } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import LogitsDistribution from '@/Components/LogitsDistribution';
@@ -125,12 +125,21 @@ function ReplayHeader({
 }) {
     return (
         <header className="space-y-3" data-testid="replay-header">
-            <Button asChild variant="ghost" size="sm" className="-ml-2">
-                <Link href={`/threads/${thread.id}`}>
-                    <ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />
-                    Back to thread
-                </Link>
-            </Button>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Button asChild variant="ghost" size="sm" className="-ml-2">
+                    <Link href={`/threads/${thread.id}`}>
+                        <ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+                        Back to thread
+                    </Link>
+                </Button>
+                {/* M9 chunk 5: per-run JSON download. */}
+                <Button asChild variant="outline" size="sm" data-testid="replay-download">
+                    <a href={`/runs/${run.id}/export.json`} download={`run-${run.id}.json`}>
+                        <Download className="mr-1 h-3 w-3" aria-hidden="true" />
+                        Download JSON
+                    </a>
+                </Button>
+            </div>
             <div className="flex items-baseline gap-3 flex-wrap">
                 <h1 className="text-xl font-bold tracking-tight">
                     Replay · Run #{run.sequence_in_thread}

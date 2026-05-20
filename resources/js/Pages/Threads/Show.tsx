@@ -6,6 +6,7 @@ import {
     ArrowLeft,
     ChevronDown,
     ChevronRight,
+    Download,
     KeyRound,
     Pencil,
     Play,
@@ -485,6 +486,19 @@ function ThreadHeader({ thread }: { thread: ThreadShowProps['thread'] }) {
                                 </>
                             )}
                         </Button>
+                        {/* M9 chunk 5: thread JSON export. Plain anchor —
+                            browser respects Content-Disposition to save
+                            thread-{id}.json instead of routing through
+                            Inertia. */}
+                        <Button asChild variant="outline" size="sm" data-testid="export-thread">
+                            <a
+                                href={`/threads/${thread.id}/export.json`}
+                                download={`thread-${thread.id}.json`}
+                            >
+                                <Download className="mr-1 h-3 w-3" aria-hidden="true" />
+                                Export
+                            </a>
+                        </Button>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button
@@ -573,6 +587,21 @@ function Transcript({
                                             <Play className="h-3 w-3" aria-hidden="true" />
                                             Replay
                                         </Link>
+                                    )}
+                                    {/* M9 chunk 5: per-run JSON download.
+                                        Same terminal-only gating as Replay
+                                        per the chunk-5 decision. */}
+                                    {(run.status === 'complete' || run.status === 'error') && (
+                                        <a
+                                            href={`/runs/${run.id}/export.json`}
+                                            download={`run-${run.id}.json`}
+                                            className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                                            data-testid={`download-link-${run.id}`}
+                                            aria-label={`Download run ${run.sequence_in_thread} as JSON`}
+                                        >
+                                            <Download className="h-3 w-3" aria-hidden="true" />
+                                            JSON
+                                        </a>
                                     )}
                                     <span
                                         className={cn(
