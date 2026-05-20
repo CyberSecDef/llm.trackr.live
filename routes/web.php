@@ -14,6 +14,8 @@ use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
 use App\Http\Controllers\RunExportController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SharedReplayController;
+use App\Http\Controllers\SharedThreadController;
 use App\Http\Controllers\StreamRunController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ThreadExportController;
@@ -177,6 +179,17 @@ Route::middleware('auth')->group(function () {
 
     Route::post('logout', [SocialiteController::class, 'logout'])
         ->name('logout');
+});
+
+// Public read-only thread + replay views via share tokens (M11
+// chunk 2). NO auth middleware — anonymous + signed-in users both
+// land here. The `share` rate limiter caps the whole namespace at
+// 60 req/min per IP.
+Route::middleware('throttle:share')->prefix('share')->name('share.')->group(function () {
+    Route::get('{token}', [SharedThreadController::class, 'show'])
+        ->name('show');
+    Route::get('{token}/runs/{run}/replay', [SharedReplayController::class, 'show'])
+        ->name('runs.replay');
 });
 
 // Dev-only magic login. Bypasses OAuth so a phone on the LAN can log

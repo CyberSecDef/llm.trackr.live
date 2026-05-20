@@ -102,6 +102,15 @@ class AppServiceProvider extends ServiceProvider
         // the run-submission endpoint lands in M5/M6.
         // Laravel's RateLimiter sets X-RateLimit-Limit and X-RateLimit-Remaining
         // headers automatically.
+        // M11 chunk 2: 60-req/min per IP on the /share/* family.
+        // SPEC literal: "Public route: /share/{token} — bypasses
+        // auth, IP rate-limited to 60/min." Same budget covers the
+        // thread reader + the per-run replay route under the share
+        // namespace (chunk-2 decision).
+        RateLimiter::for('share', function (Request $request) {
+            return Limit::perMinute(60)->by($request->ip());
+        });
+
         RateLimiter::for('runs', function (Request $request) {
             $user = $request->user();
 

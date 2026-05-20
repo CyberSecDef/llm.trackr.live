@@ -663,16 +663,32 @@ Parked / carry-forward to Phase 2 + future chunks
 
 **Tasks**
 - [ ] Share toggle UI on thread detail.
-- [ ] Endpoint: `POST /threads/{id}/share` (generates `share_token`, sets `share_enabled_at`).
-- [ ] Endpoint: `DELETE /threads/{id}/share` (nulls token).
-- [ ] Public route: `/share/{token}` — bypasses auth, IP rate-limited to 60/min.
-- [ ] Read-only thread view (reuses thread detail components in read-only mode):
-  - No prompt input.
-  - No share toggle.
-  - Replay available per run.
-  - Prompts redacted if owner had `store_prompts = false` (show `[prompt redacted by author]`).
+- [x] Endpoint: `POST /threads/{thread}/share` (chunk 1). Owner-only. Always generates a fresh token per chunk-1 decision — re-enabling after disable produces a new URL so any accidentally-leaked old link stays dead. Sets `share_token` (32 hex chars / 128 bits entropy from `ShareTokenGenerator`) + `share_enabled_at = now()`. Redirects to `/threads/{id}` so the toggle UI re-renders from updated Inertia props.
+- [x] Endpoint: `DELETE /threads/{thread}/share` (chunk 1). Owner-only. Nulls both `share_token` + `share_enabled_at`. Idempotent: DELETE on an already-unshared thread is a no-op redirect, not 404.
+- [x] Public route: `/share/{token}` — bypasses auth, IP rate-limited to 60/min (chunk 2). `SharedThreadController::show($token)` resolves via `whereNotNull('share_token')->where('share_token', $token)`; 404 on miss. Rate-limited via a new `share` RateLimiter (`Limit::perMinute(60)->by($request->ip())`) applied to the `Route::middleware('throttle:share')->prefix('share')` group — same budget covers both the thread reader AND `/share/{token}/runs/{run}/replay` per chunk-2 decision.
+- [x] Read-only thread view (chunk 2). New `Pages/Share/Show.tsx` standalone page per chunk-2 decision (no readOnly flag on Threads/Show.tsx). Custom inline `SharedLayout` replaces `AppLayout` so anonymous viewers don't see the authenticated sidebar; layout has a brand header + a footer "What is this?" link to the about page. Sub-requirements:
+  - **No prompt input** ✅ (page has no PromptFooter)
+  - **No share toggle** ✅ (controller only sends sanitized props; no header buttons)
+  - **Replay available per run** ✅ — terminal-only `Replay` pill on each run row → `/share/{token}/runs/{id}/replay`
+  - **Prompts redacted if owner had `store_prompts = false`** ✅ — `SharedThreadController` substitutes `[prompt redacted by author]` for any null prompts when the owner's `store_prompts` is false; the page also shows a top-of-thread redaction notice
+- [x] `/share/{token}/runs/{run}/replay` — public replay (chunk 2). `SharedReplayController` mirrors the M9 owner replay but: (a) auth-bypassed; (b) cross-thread defense — `abort_unless($run->thread_id === $thread->id, 404)` so a valid token for thread A can't reach a run in private thread B; (c) 422 for non-terminal runs; (d) same prompt-redact policy. Reuses `RunReplayEventSynthesizer`. `Pages/Share/Replay.tsx` mirrors `Pages/Runs/Replay.tsx` but with `SharedLayout` and no download menu (M10 export endpoints are owner-only).
 - [ ] Copy-to-clipboard button for the share URL.
 - [ ] Documentation link on the share page: "What is this?" → about page.
+
+**Decisions (chunks 1–2):**
+- **Always regenerate token on enable.** (chunk 1) User choice. POST is intentionally non-idempotent: hitting it twice produces two different tokens; the first URL becomes dead the moment the second is generated. Trade-off: a user who saved a URL, toggled sharing off + back on, and revisits the saved URL gets a 404 — the right outcome for a security-sensitive operation.
+- **Inertia redirect over JSON response.** (chunk 1) Matches the existing ThreadController patterns (title edit, archive, delete). The chunk-3 share-toggle UI will use `useForm.post` / `router.delete` and let Inertia re-render the thread page with updated props.
+- **`ShareTokenGenerator` as an injectable service.** (chunk 1) Tests bind a `FixedTokenGenerator` subclass via `$this->app->instance(ShareTokenGenerator::class, $fake)` for deterministic regen assertions. Matches the M10 chunk-2 FrameRenderer-fake pattern.
+- **128-bit entropy (16 bytes / 32 hex chars).** (chunk 1) Collision probability across the lifetime of the app is essentially zero. The `UNIQUE` constraint on `threads.share_token` (from the M5 migration) is the belt-and-braces guard.
+- **Idempotent DELETE.** (chunk 1) Calling DELETE on a thread that's already unshared returns the same redirect, not a 404 — a stale tab that re-issues the request after the user already toggled off shouldn't error.
+- **New `Pages/Share/Show.tsx` page over a `readOnly` flag on `Threads/Show.tsx`.** (chunk 2) User choice. Standalone page = no conditional logic on the live page = no risk of leaking a feature (prompt input, share toggle, title editor) into the public view by accident. Cost is a small amount of duplication for the run-row layout; the M8/M9 viz components are reused verbatim.
+- **Separate `/share/{token}/runs/{run}/replay` route over inline modal.** (chunk 2) User choice. Mirrors the M9 owner-replay shape. Reuses every viz component; only the controller + layout differ.
+- **Single `share` rate limiter for both routes, not per-route.** (chunk 2) User choice. 60 req/min per IP across the whole `/share/*` namespace. SPEC's literal "IP rate-limited to 60/min" reads as a budget, not a per-route quota.
+- **Cross-thread defense in `SharedReplayController`.** (chunk 2) `abort_unless($run->thread_id === $thread->id, 404)` guards against an attacker with a valid token for thread A trying to navigate to a run in private thread B. 404 (not 403) avoids acknowledging the existence of the private run.
+- **Backend does the prompt redaction, not the frontend.** (chunk 2) The controller substitutes `[prompt redacted by author]` for null prompts when `user.store_prompts=false` before the payload leaves the server. Frontend just renders whatever's in the field; also includes `prompts_redacted: bool` so the page can show a top-of-thread notice.
+- **`whereNotNull('share_token')` in the lookup.** (chunk 2) Defense-in-depth: even if some database state has `share_token = null` rows that match a falsy URL, the WHERE clause filters them out. The unique constraint on `share_token` is the primary guard; this is the runtime fallback.
+- **No `user_id` / `model_id` / `api_key_id` in the public response.** (chunk 2) Matches M9's JSON-export design — the public share payload is identity-free. The `model_snapshot` inside `parameters` is what the page uses for `total_layers` + `architecture_type`; the FK doesn't leak.
+- **`Replay` link only on terminal runs.** (chunk 2) Same gate the M9 replay button uses on the owner thread page. Pending/streaming runs don't have a stable token_log; absence is the signal.
 
 **Exit criteria**
 - Toggling share on a thread produces a `/share/{token}` URL that works in an incognito window.
