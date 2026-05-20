@@ -26,7 +26,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
 | M10 | GIF Export | M8 | 6 days | ✅ Complete | |
 | M11 | Thread Sharing | M9 | 3 days | ✅ Done | |
-| M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
+| M12 | Accessibility + Polish | M11 | 5 days | 🟡 In progress (chunk 1 done) | |
 | M13 | Deployment | M12 | 5 days | ⚪ Not started | |
 | M14 | Launch Prep | M13 | 5 days | ⚪ Not started | |
 | | **Total** | | **~80 engineer-days** | | |
@@ -788,7 +788,7 @@ Bonus invariants from the implementation:
 **Purpose:** WCAG 2.1 AA compliance + general UX polish.
 
 **Tasks**
-- [ ] Full WCAG 2.1 AA audit using axe-core in CI + manual screen-reader pass (NVDA + VoiceOver).
+- [~] Full WCAG 2.1 AA audit using axe-core in CI + manual screen-reader pass (NVDA + VoiceOver). Chunk 1 lands the **CI half**: `jest-axe` wired into Vitest via `expect.extend(toHaveNoViolations)` in `resources/js/test/setup.ts`; a shared runner at `resources/js/test/axe.ts` configures axe-core to run the full `wcag2a / wcag2aa / wcag21a / wcag21aa` rule set with two jsdom-incompatible rules disabled (`color-contrast` — jsdom returns `rgba(0,0,0,0)` for most computed colors, would false-positive everywhere; `scrollable-region-focusable` — same root cause, depends on computed overflow). A new `resources/js/__tests__/a11y/` directory holds the page-level audits; chunk 1 ships audits for the four pages named in the SPEC exit criteria (`Dashboard`, `Threads/Show`, `Share/Show`, `Share/Replay`), each across 2–3 meaningful states (empty / loaded / archived / redacted / errored). 11 new Vitest tests; **zero structural violations** on the first run across all four pages. Hard-fail CI gate: any future regression breaks the build. Manual screen-reader pass + color-contrast verification deferred to the M12 cross-browser smoke chunk (matches the chunk-1 visual-a11y decision below).
 - [ ] Keyboard navigation: all viz controls operable without mouse; visible focus rings.
 - [ ] ARIA labels on canvases (Three.js scene gets a textual description that updates on layer-advance).
 - [ ] `prefers-reduced-motion` honored (stepped static frames instead of continuous animation).
@@ -800,9 +800,18 @@ Bonus invariants from the implementation:
 - [ ] Cross-browser testing: Chrome, Firefox, Edge, Safari (latest two).
 - [ ] WebGL 2.0 detection + clear "unsupported browser" message with fallback to 2D-only viz.
 
+**Decisions (chunk 1):**
+- **`jest-axe` over `vitest-axe` or a custom matcher.** User choice. jest-axe is the mature path — large user base, axe-core 4.x under the hood, the `toHaveNoViolations` matcher is a plain `{pass, message}` shape that consumes via Vitest's `expect.extend(...)` API. The `vitest-axe` package is a smaller community wrapper around the same axe-core; rolling our own matcher would have been ~10 lines but added a dependency we'd own without payoff. The TypeScript surface comes from `@types/jest-axe` + `import 'jest-axe/extend-expect'` in `resources/js/types/global.d.ts`.
+- **Hard-fail CI gate from day one, not report-only.** User choice. Any axe violation in any a11y test fails Vitest, which fails CI. Forces fixes in-chunk rather than letting a backlog accumulate. The trade-off — false-positives could block a PR — is acceptable because the jsdom-safe rule config (`color-contrast` + `scrollable-region-focusable` disabled) eliminates the two rules that fire spuriously under jsdom; everything else axe checks (labels, ARIA roles, headings, landmarks, name/role/value, alt text, button-has-name, document-title) is deterministic and meaningful.
+- **Dedicated `__tests__/a11y/` directory + per-page test files, not assertions tacked onto existing tests.** Existing page tests already carry complex fixture state (Inertia hoist mocks, fetch stubs, stream-state mocks). Co-locating axe assertions would tangle the a11y signal with the unit-test signal. Per-page files mean each a11y file owns the minimal fixtures needed to render the page in its meaningful states; the a11y file becomes a clean "is this page accessible?" signal independent of the unit-test surface.
+- **Test multiple page states, not just the default render.** Each a11y file covers 2–3 states: empty (no data) / loaded (realistic data) / variant (archived / errored / redacted). Empty states have their own a11y surface (different headings, different landmarks, empty-state CTAs); variants like "archived" introduce status badges that need accessible names. Testing only the loaded state would miss those code paths.
+- **`color-contrast` + `scrollable-region-focusable` disabled under jsdom; visual a11y deferred.** jsdom doesn't compute CSS; `getComputedStyle` returns `rgba(0,0,0,0)` for most elements, so contrast checks would false-positive every element with Tailwind classes. The visual a11y story (real contrast ratios, focus-ring visibility, `prefers-reduced-motion` behavior in real browsers) needs a Playwright + `@axe-core/playwright` pass or a manual cross-browser audit — both deferred to a later M12 chunk or M14. The structural a11y story (everything else axe-core checks) runs hot in jsdom and catches regressions just fine.
+- **Run the full `wcag2a / wcag2aa / wcag21a / wcag21aa` tag set, not just `wcag2aa`.** The SPEC says "WCAG 2.1 AA". Running A + AA at both 2.0 and 2.1 levels covers the full conformance target. Best-practice rules (`best-practice` tag) are intentionally NOT included — they catch UX-quality issues that aren't WCAG conformance failures, and we don't want a "page has heading levels skipping" best-practice rule (which axe flags) to gate CI when it isn't a WCAG violation.
+- **Skeleton chunks: chunk 1 is axe + four pages only.** SPEC's M12 task list has 11 items; bundling them all into one chunk would be too much surface area. Chunk 1 lands the harness + the SPEC exit-criteria pages. Subsequent chunks own the remaining tasks (keyboard nav + focus rings, ARIA on canvases, `prefers-reduced-motion` audit, color-blind palettes on heatmaps, empty states, loading/skeletons, toasts, error pages, cross-browser smoke, WebGL detection + 2D fallback).
+
 **Exit criteria**
-- axe-core reports zero violations on dashboard, prompt-input, thread-detail, share-view pages.
-- Manual keyboard navigation can run a full vertical slice (sign in → new thread → submit → watch viz → replay) without a mouse.
+- [x] **axe-core reports zero violations on dashboard, prompt-input, thread-detail, share-view pages.** Mapped to the four pages in `resources/js/__tests__/a11y/`: `Dashboard.a11y.test.tsx` (Dashboard + empty + loaded), `Threads.Show.a11y.test.tsx` (the prompt-input lives inside Threads/Show via `PromptFooter`; covered in empty + loaded + archived states), `Share.Show.a11y.test.tsx` (Share/Show in empty + loaded + redacted states), `Share.Replay.a11y.test.tsx` (Share/Replay in complete + errored + redacted states). 11 tests, all green, hard-fail gate. Caveat: jsdom-disabled rules (`color-contrast`, `scrollable-region-focusable`) carry over to a later chunk / M14.
+- [ ] Manual keyboard navigation can run a full vertical slice (sign in → new thread → submit → watch viz → replay) without a mouse. Pending — owned by the M12 keyboard-nav chunk.
 
 ---
 

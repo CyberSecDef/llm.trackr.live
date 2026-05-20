@@ -1,7 +1,16 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach, vi } from 'vitest';
+import { afterEach, expect, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { toHaveNoViolations } from 'jest-axe';
 import React from 'react';
+
+// M12 chunk 1 — wire jest-axe's matcher onto Vitest's expect. The
+// matcher is a plain {pass, message} shape so it works with any
+// expect.extend-compatible runner. Page-level a11y tests live under
+// resources/js/__tests__/a11y/ and use the helper at
+// resources/js/test/axe.ts to invoke axe-core with our shared
+// jsdom-safe rule config.
+expect.extend(toHaveNoViolations);
 
 // Inertia's components/hooks require the createInertiaApp HeadManager
 // + PageContext that only exist at runtime. In isolated component tests
