@@ -158,6 +158,92 @@ describe('ParticleSystem', () => {
         ps.dispose();
     });
 
+    // ─── M9 chunk 2: seeded determinism ──────────────────────────
+
+    it('seeded spawnBurst produces identical positions across calls', () => {
+        // Two fresh systems, same seed → same positions.
+        const a = new ParticleSystem({ maxParticles: 8 });
+        const b = new ParticleSystem({ maxParticles: 8 });
+        a.spawnBurst(4, 12345);
+        b.spawnBurst(4, 12345);
+        a.update(0);
+        b.update(0);
+
+        const m = new THREE.Matrix4();
+        const aPos = new THREE.Vector3();
+        const bPos = new THREE.Vector3();
+        for (let i = 0; i < 4; i++) {
+            a.mesh.getMatrixAt(i, m);
+            aPos.setFromMatrixPosition(m);
+            b.mesh.getMatrixAt(i, m);
+            bPos.setFromMatrixPosition(m);
+            expect(aPos.x).toBeCloseTo(bPos.x, 6);
+            expect(aPos.z).toBeCloseTo(bPos.z, 6);
+        }
+        a.dispose();
+        b.dispose();
+    });
+
+    it('seeded spawnBurst ignores the constructor random override', () => {
+        // Constructor random returns 0.5 (center) — but the seed takes
+        // over so positions should NOT be (0, 0).
+        const ps = new ParticleSystem({
+            maxParticles: 4,
+            random: () => 0.5,
+        });
+        ps.spawnBurst(2, 999);
+        ps.update(0);
+
+        const m = new THREE.Matrix4();
+        const pos = new THREE.Vector3();
+        ps.mesh.getMatrixAt(0, m);
+        pos.setFromMatrixPosition(m);
+        // The seeded path produces non-center positions.
+        expect(Math.abs(pos.x) + Math.abs(pos.z)).toBeGreaterThan(0);
+        ps.dispose();
+    });
+
+    it('different seeds produce different positions', () => {
+        const a = new ParticleSystem({ maxParticles: 4 });
+        const b = new ParticleSystem({ maxParticles: 4 });
+        a.spawnBurst(2, 1);
+        b.spawnBurst(2, 2);
+        a.update(0);
+        b.update(0);
+
+        const m = new THREE.Matrix4();
+        const aPos = new THREE.Vector3();
+        const bPos = new THREE.Vector3();
+        a.mesh.getMatrixAt(0, m);
+        aPos.setFromMatrixPosition(m);
+        b.mesh.getMatrixAt(0, m);
+        bPos.setFromMatrixPosition(m);
+        // At least one coordinate should differ.
+        const dx = Math.abs(aPos.x - bPos.x);
+        const dz = Math.abs(aPos.z - bPos.z);
+        expect(dx + dz).toBeGreaterThan(0.001);
+        a.dispose();
+        b.dispose();
+    });
+
+    it('spawnBurst without seed falls back to constructor random (back-compat)', () => {
+        // Existing tests stayed passing because the seed path is opt-in.
+        // Verify explicitly: constructor random=0.5 → center positions.
+        const ps = new ParticleSystem({
+            maxParticles: 4,
+            random: () => 0.5,
+        });
+        ps.spawnBurst(1); // no seed
+        ps.update(0);
+        const m = new THREE.Matrix4();
+        const pos = new THREE.Vector3();
+        ps.mesh.getMatrixAt(0, m);
+        pos.setFromMatrixPosition(m);
+        expect(pos.x).toBeCloseTo(0, 5);
+        expect(pos.z).toBeCloseTo(0, 5);
+        ps.dispose();
+    });
+
     it('paints vertex colors with a bottom-to-top gradient', () => {
         // Verifies the comet-tail vertex-color setup. Top-face
         // vertices should have non-zero blue (cyan-300 has high B);

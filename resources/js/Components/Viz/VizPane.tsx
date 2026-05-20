@@ -10,6 +10,7 @@ import { ParticleSystem } from '@/Components/Viz/ParticleSystem';
 import { TransformerStack } from '@/Components/Viz/TransformerStack';
 import { subComponentsFor } from '@/Components/Viz/subComponents';
 import { generateAttentionPattern } from '@/lib/attentionPattern';
+import { burstForToken } from '@/lib/particleBurst';
 import type { RunEvent } from '@/types/runs';
 
 /*
@@ -247,11 +248,12 @@ export default function VizPane({ events, status, totalLayers, architectureType 
             if (e.event === 'layer.advanced') {
                 cascade.pushWave();
             } else if (e.event === 'token.received') {
-                // Burst of 5–10 streaks per token. Random spread so
-                // repeated tokens don't produce identical visual
-                // bursts.
-                const burstSize = 5 + Math.floor(Math.random() * 6);
-                particles.spawnBurst(burstSize);
+                // M9 chunk 2 strict determinism: burst size + jitter
+                // seed are pure functions of the token's index in the
+                // run. Two replays of the same run produce identical
+                // particle positions for every token.
+                const { count, seed } = burstForToken(e.payload.index);
+                particles.spawnBurst(count, seed);
             }
         }
         consumedEventCount.current = events.length;

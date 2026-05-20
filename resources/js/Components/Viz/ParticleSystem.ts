@@ -134,16 +134,23 @@ export class ParticleSystem {
      * Spawn up to `count` particles at the bottom of the stack with
      * randomized X/Z jitter. Returns the number actually spawned —
      * less than `count` if the pool is saturated.
+     *
+     * When `seed` is provided (M9 chunk 2 strict-determinism path),
+     * jitter is derived from a per-call xorshift32 keyed by `seed`,
+     * ignoring the constructor's `random`. Replay calls pass a
+     * token-index-derived seed (`burstForToken(tokenIndex).seed`) so
+     * the same token always lands particles in the same positions.
      */
-    spawnBurst(count: number): number {
+    spawnBurst(count: number, seed?: number): number {
+        const rng = seed !== undefined ? makeSeededRng(seed) : this.random;
         let spawned = 0;
         for (let i = 0; i < this.particles.length && spawned < count; i++) {
             const p = this.particles[i];
             if (p.active) continue;
             p.active = true;
             p.positionY = Y_BOTTOM;
-            p.positionX = (this.random() - 0.5) * 2 * SPAWN_X_RANGE;
-            p.positionZ = (this.random() - 0.5) * 2 * SPAWN_Z_RANGE;
+            p.positionX = (rng() - 0.5) * 2 * SPAWN_X_RANGE;
+            p.positionZ = (rng() - 0.5) * 2 * SPAWN_Z_RANGE;
             p.ageMs = 0;
             spawned++;
         }
@@ -211,4 +218,20 @@ export class ParticleSystem {
         this.mesh.geometry.dispose();
         (this.mesh.material as THREE.Material).dispose();
     }
+}
+
+/**
+ * xorshift32-based PRNG factory. Same algorithm used by the chunk-3
+ * embeddingClusters jitter + the chunk-5a attentionPattern noise —
+ * cheap, deterministic, fine for non-cryptographic visual seeding.
+ */
+function makeSeededRng(seed: number): () => number {
+    let s = seed >>> 0 || 1;
+    return () => {
+        s ^= s << 13;
+        s ^= s >>> 17;
+        s ^= s << 5;
+        s >>>= 0;
+        return (s % 1_000_000) / 1_000_000;
+    };
 }
