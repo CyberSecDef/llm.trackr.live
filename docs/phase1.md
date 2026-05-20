@@ -23,7 +23,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
-| M9 | Replay + JSON Export | M8 | 4 days | ⚪ Not started | |
+| M9 | Replay + JSON Export | M8 | 4 days | 🟡 In progress (chunk 1 done) | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
@@ -469,12 +469,21 @@ Parked / carry-forward to M9
 **Purpose:** Saved runs can be replayed without hitting vendor APIs. Runs and threads export to JSON.
 
 **Tasks**
-- [ ] Replay route: `/threads/{thread}/runs/{run}/replay`.
-- [ ] Replay page reuses M8 components but reads events from `runs.token_log` rather than the WebSocket.
+- [x] Replay route: `/threads/{thread}/runs/{run}/replay` (chunk 1). `ReplayController::show` authorizes thread owner + run-in-thread + terminal-status (422 for streaming runs), then renders `Inertia 'Runs/Replay'` with `{ thread, run, events, model }`. The event stream is synthesized by `app/Services/Runs/RunReplayEventSynthesizer` — given a Run, it walks `token_log` and produces the same wire-shape `RunEvent[]` the live broadcast pipeline emits: `run.started` first, per-token `token.received` + `layer.advanced` (+ `moe.routed` for MoE), then `run.completed` / `run.errored`. Reuses `RunEventEmitter` so MoE expert routing stays deterministic per (run.id, token_index) — replays are frame-identical to live (SPEC §10.1). 9 Pest tests on the synthesizer + 8 on the controller.
+- [x] Replay page reuses M8 components but reads events from `runs.token_log` rather than the WebSocket (chunk 1). `resources/js/Pages/Runs/Replay.tsx` is a standalone Inertia page: thread breadcrumb + run header, a prompt + re-streaming assistant body driven by `useEventPlayback({ mode: 'replay', initialPlaying: false })`, and the M8 right pane (Viz/Embeddings/Debug) sharing the same lazy-loaded Three.js bundle. The viz consumers (LogitsDistribution, MoERouting, VizPane, EmbeddingScene) need zero changes — they read from `playback.visibleEvents` exactly like the live page. The Debug tab is a simpler standalone variant (no transport label since there's no WebSocket). 8 Vitest tests on the page; per the chunk-1 decision, the initial state is paused-at-cursor-0 and the user clicks Play to start.
+- [x] Replay launch — Replay button on each terminal run row in the thread detail page transcript (chunk 1). Renders a small pill-shaped Link with the Play icon next to the status badge for `complete` and `error` runs. Hidden for `pending`/`streaming` runs. 3 Vitest assertions.
 - [ ] Deterministic seeding verified — same run replayed twice produces frame-identical animation.
 - [ ] JSON export: `GET /runs/{id}/export.json` — includes run metadata, token log, model snapshot, parameters.
 - [ ] Thread JSON export: `GET /threads/{id}/export.json` — array of run exports.
 - [ ] Download UI: button on run detail + thread detail pages.
+
+**Decisions (chunk 1):**
+- **`useEventPlayback` gains a `mode: 'live' | 'replay'` option.** In `'replay'` mode, 1× becomes a throttled dispenser (BASE_RATE × 1 events/sec) instead of LIVE head-sync. `isReplay` is exposed so the toolbar can suppress the LIVE pill. The hook's other semantics (pause, step-to-next-token, 0.5× throttle, 2×/4× drain, setCursor for scrubbing) work identically across modes. 5 new Vitest cases cover the replay-mode paths. (Decision: extending the existing hook over building a parallel one — same buffer model, same controls UX, M9 inherits chunk-8's playback engine.)
+- **`RunReplayEventSynthesizer` reuses `RunEventEmitter` rather than reimplementing.** Constructs a `LlmTokenChunk` from each token_log entry and runs it through the same emitter the live pipeline uses, then maps each Laravel event to its `broadcastAs()` + `broadcastWith()` pair. Means MoE expert routing's `(run.id, token_index) → expert IDs` hash stays consistent with what the original live broadcast emitted — replays match per SPEC §10.1. (Decision: synthesizer reuses emitter; doesn't persist layer/MoE events. Keeps `token_log` schema tiny; replay is a pure function of (run, token_log).)
+- **Initial state: paused at cursor 0.** User clicks Play to start. Considered: auto-play at 1× (more immediate) vs starts-at-end (full state visible). Paused-at-0 is the cleanest "give me a moment to set up the view" UX. The PlaybackControls toolbar's Step button works from cursor 0 so users can also walk through token-by-token from the start.
+- **Replay page is standalone, not a flag on `Threads/Show`.** Considered conditional logic inside the live page. Standalone keeps the prompt-footer + thread-title-editing logic on the live page only and the replay logic is much smaller (~340 lines including the RightPane inline). Worth a tiny duplication of the RightPane structure (tab toggle + lazy viz/embeddings + debug pane) — only ~80 lines.
+- **Replay button only shows on terminal runs (complete/error).** Pending/streaming runs have no stable token_log to replay. The button on errored runs still renders because partial output is replayable; users can see how the run progressed before failure.
+- **422 for non-terminal runs in the controller, not 404.** Conveys "this is a real run but not in a state that supports replay" rather than "no such run." Semantically clearer error.
 
 **Exit criteria**
 - Replaying a 100-token run shows the same animation as the original generation.

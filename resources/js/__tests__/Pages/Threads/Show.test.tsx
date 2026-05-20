@@ -772,6 +772,62 @@ describe('<ThreadShow /> — transcript', function () {
         expect(within(card).getByText(/10 in · 1 out/)).toBeInTheDocument();
     });
 
+    // ─── M9 chunk 1: Replay link on terminal runs ──────────────────
+
+    it('shows a Replay link on completed runs pointing at the right URL', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[{ ...sampleRun, status: 'complete' }]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        const link = screen.getByTestId(`replay-link-${sampleRun.id}`);
+        expect(link).toBeInTheDocument();
+        expect(link.getAttribute('href')).toBe(
+            `/threads/${baseThread.id}/runs/${sampleRun.id}/replay`,
+        );
+    });
+
+    it('shows a Replay link on errored runs (partial output is still replayable)', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        status: 'error',
+                        error_message: 'oops',
+                        output_text: 'partial',
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId(`replay-link-${sampleRun.id}`)).toBeInTheDocument();
+    });
+
+    it('does NOT show a Replay link on streaming runs', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[
+                    {
+                        ...sampleRun,
+                        id: 51,
+                        status: 'streaming',
+                        output_text: null,
+                    },
+                ]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.queryByTestId('replay-link-51')).not.toBeInTheDocument();
+    });
+
     it('renders error messages for errored runs', function () {
         render(
             <ThreadShow

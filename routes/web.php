@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DebugRunController;
 use App\Http\Controllers\PromptPreviewController;
+use App\Http\Controllers\ReplayController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventsController;
 use App\Http\Controllers\SettingsController;
@@ -117,6 +118,14 @@ Route::middleware('auth')->group(function () {
     // catch up on events missed during the disconnect window.
     Route::get('runs/{run}/events', [RunEventsController::class, 'index'])
         ->name('runs.events');
+
+    // Replay of a terminal run (M9 chunk 1). The token_log column is
+    // re-synthesized into the same RunEvent[] shape the live pipeline
+    // emits; MoE expert routing stays deterministic per (run.id,
+    // token_index) so a replay is frame-identical to the original
+    // generation per SPEC §10.1.
+    Route::get('threads/{thread}/runs/{run}/replay', [ReplayController::class, 'show'])
+        ->name('threads.runs.replay');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {

@@ -225,6 +225,94 @@ describe('useEventPlayback', () => {
         expect(result.current.playing).toBe(true);
     });
 
+    // ─── M9 chunk 1: replay-mode semantics ─────────────────────
+
+    it('replay mode: initialPlaying=false keeps cursor at 0 on mount', () => {
+        const events: RunEvent[] = [tokenEvent('a', 100, 0), tokenEvent('b', 200, 1)];
+        const { result } = renderHook(
+            ({ e }) => useEventPlayback(e, { mode: 'replay', initialPlaying: false }),
+            { initialProps: { e: events } },
+        );
+        expect(result.current.cursor).toBe(0);
+        expect(result.current.playing).toBe(false);
+        expect(result.current.isReplay).toBe(true);
+        expect(result.current.isLive).toBe(false);
+    });
+
+    it('replay mode at 1× throttles instead of head-syncing', () => {
+        const events = Array.from({ length: 20 }, (_, i) => tokenEvent('x', i * 50, i));
+        const { result } = renderHook(
+            ({ e }) => useEventPlayback(e, { mode: 'replay', initialPlaying: false }),
+            { initialProps: { e: events } },
+        );
+        act(() => result.current.play());
+        // 1× in replay = 1000 / (30 × 1) ≈ 33ms per event.
+        act(() => {
+            vi.advanceTimersByTime(35);
+        });
+        // Should have advanced by 1 (not jumped to head).
+        expect(result.current.cursor).toBe(1);
+        // Plenty more time → still throttled, not jumped to head.
+        act(() => {
+            vi.advanceTimersByTime(70);
+        });
+        expect(result.current.cursor).toBeGreaterThan(1);
+        expect(result.current.cursor).toBeLessThan(events.length);
+    });
+
+    it('replay mode never reports isLive even at 1×', () => {
+        const events: RunEvent[] = [tokenEvent('a', 100, 0)];
+        const { result } = renderHook(
+            ({ e }) =>
+                useEventPlayback(e, {
+                    mode: 'replay',
+                    initialPlaying: true,
+                    initialCursor: 1,
+                }),
+            { initialProps: { e: events } },
+        );
+        expect(result.current.isLive).toBe(false);
+        expect(result.current.isReplay).toBe(true);
+    });
+
+    it('setCursor clamps to [0, events.length] and updates visibleEvents', () => {
+        const events: RunEvent[] = [
+            tokenEvent('a', 100, 0),
+            tokenEvent('b', 200, 1),
+            tokenEvent('c', 300, 2),
+        ];
+        const { result } = renderHook(
+            ({ e }) => useEventPlayback(e, { mode: 'replay', initialPlaying: false }),
+            { initialProps: { e: events } },
+        );
+        act(() => result.current.setCursor(2));
+        expect(result.current.cursor).toBe(2);
+        expect(result.current.visibleEvents).toHaveLength(2);
+        // Over-large → clamp to length.
+        act(() => result.current.setCursor(99));
+        expect(result.current.cursor).toBe(3);
+        // Negative → clamp to 0.
+        act(() => result.current.setCursor(-5));
+        expect(result.current.cursor).toBe(0);
+    });
+
+    it('replay mode does not auto-reset on events identity change', () => {
+        // Same content, different array identity (e.g., props reshuffle).
+        // Replay must NOT treat that as a shrink.
+        const a: RunEvent[] = [tokenEvent('a', 100, 0), tokenEvent('b', 200, 1)];
+        const { result, rerender } = renderHook(
+            ({ e }) => useEventPlayback(e, { mode: 'replay', initialPlaying: false }),
+            { initialProps: { e: a } },
+        );
+        act(() => result.current.setCursor(1));
+        expect(result.current.cursor).toBe(1);
+
+        // New array, same length. Cursor should hold.
+        const b: RunEvent[] = [tokenEvent('a', 100, 0), tokenEvent('b', 200, 1)];
+        rerender({ e: b });
+        expect(result.current.cursor).toBe(1);
+    });
+
     it('visibleEvents matches the cursor slice exactly', () => {
         const events: RunEvent[] = [
             tokenEvent('a', 100, 0),

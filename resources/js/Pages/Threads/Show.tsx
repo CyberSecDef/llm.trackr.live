@@ -8,6 +8,7 @@ import {
     ChevronRight,
     KeyRound,
     Pencil,
+    Play,
     Radio,
     Trash2,
 } from 'lucide-react';
@@ -163,6 +164,7 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
                         <div className="lg:col-span-2 space-y-6 min-w-0">
                             <ThreadHeader thread={thread} />
                             <Transcript
+                                threadId={thread.id}
                                 runs={runs}
                                 events={playback.visibleEvents}
                                 usableModels={usable_models}
@@ -523,10 +525,12 @@ function ThreadHeader({ thread }: { thread: ThreadShowProps['thread'] }) {
 }
 
 function Transcript({
+    threadId,
     runs,
     events,
     usableModels,
 }: {
+    threadId: number;
     runs: RunRow[];
     events: RunEvent[];
     usableModels: UsableModel[];
@@ -557,14 +561,28 @@ function Transcript({
                                 <p className="text-xs text-muted-foreground">
                                     Run #{run.sequence_in_thread}
                                 </p>
-                                <span
-                                    className={cn(
-                                        'rounded-full px-2 py-0.5 text-xs',
-                                        STATUS_CLASSES[run.status],
+                                <div className="flex items-center gap-2">
+                                    {/* M9 chunk 1: replay link for terminal runs. */}
+                                    {(run.status === 'complete' || run.status === 'error') && (
+                                        <Link
+                                            href={`/threads/${threadId}/runs/${run.id}/replay`}
+                                            className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                                            data-testid={`replay-link-${run.id}`}
+                                            aria-label={`Replay run ${run.sequence_in_thread}`}
+                                        >
+                                            <Play className="h-3 w-3" aria-hidden="true" />
+                                            Replay
+                                        </Link>
                                     )}
-                                >
-                                    {STATUS_LABEL[run.status]}
-                                </span>
+                                    <span
+                                        className={cn(
+                                            'rounded-full px-2 py-0.5 text-xs',
+                                            STATUS_CLASSES[run.status],
+                                        )}
+                                    >
+                                        {STATUS_LABEL[run.status]}
+                                    </span>
+                                </div>
                             </div>
 
                             {run.prompt !== null && (
