@@ -149,4 +149,21 @@ describe('<SharedReplay />', () => {
         );
         expect(screen.getByTestId('shared-replay-error-badge')).toBeInTheDocument();
     });
+
+    it('footer links to the /about explainer + AGPL §13 source', () => {
+        render(
+            <SharedReplay
+                token="abc"
+                thread={thread}
+                run={baseRun}
+                events={events}
+                model={baseModel}
+                prompts_redacted={false}
+            />,
+        );
+        expect(screen.getByTestId('shared-about-link').getAttribute('href')).toBe('/about');
+        expect(screen.getByTestId('shared-source-link').getAttribute('href')).toBe(
+            'https://github.com/CyberSecDef/llm.trackr.live',
+        );
+    });
 });

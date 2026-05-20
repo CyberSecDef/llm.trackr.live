@@ -16,12 +16,21 @@ export default function Welcome({ laravelVersion, phpVersion }: WelcomeProps) {
                         Interactive, real-time visualization of LLM inference internals.
                     </p>
 
-                    <Link
-                        href={route('login')}
-                        className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    >
-                        Sign in →
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                        <Link
+                            href={route('login')}
+                            className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        >
+                            Sign in →
+                        </Link>
+                        <Link
+                            href="/about"
+                            className="text-sm text-slate-400 underline hover:text-slate-200"
+                            data-testid="welcome-about-link"
+                        >
+                            What is this?
+                        </Link>
+                    </div>
 
                     <p className="text-sm text-slate-500">
                         See{' '}

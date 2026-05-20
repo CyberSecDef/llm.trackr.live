@@ -39,6 +39,18 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
+// Public "about" page (M11 chunk 4). Anonymous and signed-in users
+// both land here. Linked from:
+//   - SharedLayout footer ("What is this?")
+//   - Welcome page nav
+//   - AGPL §13 "Source" footer (the page itself surfaces the repo
+//     link).
+// No throttle: cheap static render and we'd rather have it always
+// reachable than rate-limited.
+Route::get('about', function () {
+    return Inertia::render('About');
+})->name('about');
+
 // Sign-in page. Signed-in users skip straight to the dashboard.
 Route::get('login', function () {
     if (Auth::check()) {

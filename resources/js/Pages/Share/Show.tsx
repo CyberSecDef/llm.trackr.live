@@ -210,11 +210,20 @@ function SharedLayout({ children }: { children: React.ReactNode }) {
             <main>{children}</main>
             <footer className="border-t border-border px-6 py-4 text-center text-[11px] text-muted-foreground">
                 <a
-                    href="/"
+                    href="/about"
                     className="inline-flex items-center gap-1 hover:text-foreground"
                     data-testid="shared-about-link"
                 >
                     What is this?
+                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+                <span className="mx-2 text-muted-foreground/40">·</span>
+                <a
+                    href="https://github.com/CyberSecDef/llm.trackr.live"
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    data-testid="shared-source-link"
+                >
+                    Source
                     <ExternalLink className="h-3 w-3" aria-hidden="true" />
                 </a>
             </footer>

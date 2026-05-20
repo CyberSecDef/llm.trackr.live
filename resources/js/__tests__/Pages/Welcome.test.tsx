@@ -26,4 +26,10 @@ describe('<Welcome />', () => {
         const link = screen.getByRole('link', { name: /the repository/i });
         expect(link).toHaveAttribute('href', 'https://github.com/CyberSecDef/llm.trackr.live');
     });
+
+    it('links to the /about explainer page', () => {
+        render(<Welcome laravelVersion="13.9.0" phpVersion="8.4.21" />);
+        const link = screen.getByTestId('welcome-about-link');
+        expect(link).toHaveAttribute('href', '/about');
+    });
 });

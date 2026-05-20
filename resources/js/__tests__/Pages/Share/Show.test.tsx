@@ -123,11 +123,19 @@ describe('<SharedThreadShow />', () => {
         expect(screen.queryByTestId('shared-replay-link-200')).not.toBeInTheDocument();
     });
 
-    it('header contains a link back to the home page (about)', () => {
+    it('footer links to the /about explainer page', () => {
         render(
             <SharedThreadShow token="abc" thread={baseThread} runs={[]} prompts_redacted={false} />,
         );
         const aboutLink = screen.getByTestId('shared-about-link');
-        expect(aboutLink.getAttribute('href')).toBe('/');
+        expect(aboutLink.getAttribute('href')).toBe('/about');
+    });
+
+    it('footer surfaces the AGPL §13 source link', () => {
+        render(
+            <SharedThreadShow token="abc" thread={baseThread} runs={[]} prompts_redacted={false} />,
+        );
+        const source = screen.getByTestId('shared-source-link');
+        expect(source.getAttribute('href')).toBe('https://github.com/CyberSecDef/llm.trackr.live');
     });
 });
