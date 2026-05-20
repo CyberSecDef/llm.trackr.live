@@ -25,7 +25,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
 | M10 | GIF Export | M8 | 6 days | ✅ Complete | |
-| M11 | Thread Sharing | M9 | 3 days | 🟡 In progress (chunks 1–4 done) | |
+| M11 | Thread Sharing | M9 | 3 days | ✅ Done | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
 | M13 | Deployment | M12 | 5 days | ⚪ Not started | |
 | M14 | Launch Prep | M13 | 5 days | ⚪ Not started | |
@@ -698,10 +698,88 @@ Parked / carry-forward to Phase 2 + future chunks
 - **Welcome page also links to /about.** (chunk 4) Discoverability — a signed-out user landing on `/` from the marketing URL needs a way to read about the project without first hitting a share link. Single underline link next to the sign-in CTA, not a full nav.
 - **No throttle on /about.** (chunk 4) Cheap static render, no DB queries, no rate-sensitive resources. The `share` throttle exists to protect the share-thread payload (which does DB work + prompt-redaction logic); the about page has neither.
 
+### Share manual recipe (chunk 5)
+
+Prerequisites: a thread with at least one terminal (complete or error) run — the public `Replay` pill only shows on terminal runs (same gate as the M9 owner replay).
+
+**Enable + visit + replay (golden path)**
+1. As the owner, open the thread detail page. Click **Share** in the header action row. The popover opens with "Sharing is OFF" + a single **Enable sharing** button.
+2. Click **Enable sharing**. The popover content flips to "Sharing is ON" + the share URL in a readonly input + a **Copy** icon button + a **Disable sharing** button. The trigger pill gets a small green pulse-dot indicator.
+3. Click the **Copy** icon. The icon flashes a green check for ~2 seconds. Paste somewhere visible to confirm — it should look like `https://your.host/share/{32-hex-token}`.
+4. Open a private/incognito window. Paste the URL. The shared thread page renders without any login prompt — title + tags + run rows visible, no authenticated sidebar nav. The top of the page shows the "Anonymous view · shared by the author" indicator.
+5. On any terminal run, click the **Replay** pill. The `/share/{token}/runs/{id}/replay` page loads with the same M8 viz stack the owner replay uses (PlaybackControls + Viz / Embeddings / Debug tabs). Press play; the run replays frame-identical to the original.
+6. Click **Back to shared thread** in the replay header — returns to `/share/{token}`.
+
+**Verify the "What is this?" link + AGPL §13 source link**
+1. From the shared thread page (or shared replay page), scroll to the footer. Two links should be visible: **What is this?** and **Source**.
+2. Click **What is this?** — lands on `/about` (200, no auth required). All four sections render: "What it is", "What this share link is", "Privacy posture", "Open source".
+3. Click the body source link OR the footer **Source** link → both open `https://github.com/CyberSecDef/llm.trackr.live` in a new tab.
+4. Click **Sign in to make your own** → lands on `/login`.
+5. Click **← Back to home** → lands on `/` (signed-out viewers see Welcome; signed-in viewers redirect to Dashboard).
+
+**Verify disable + token regeneration (chunk-1 invariant)**
+1. Back as the owner: open the thread. Click **Share** → popover shows "Sharing is ON" with the URL (let this be **URL-A**).
+2. Click **Disable sharing**. The popover flips to "Sharing is OFF" immediately; the green pulse-dot disappears.
+3. In the incognito tab, refresh **URL-A** → 404 (the share token is now NULL in `threads`).
+4. Owner tab: click **Enable sharing** again. The popover shows a new URL (**URL-B**). Confirm `URL-A !== URL-B` — per the chunk-1 always-regenerate decision, the old URL stays dead even if you re-enable.
+5. (Optional) Open **URL-A** in incognito → still 404. Open **URL-B** → renders the thread.
+
+**Verify rate limit (chunk-2 share throttle)**
+1. With a valid share URL handy, run a quick burst from one IP:
+   ```sh
+   for i in $(seq 1 70); do
+     curl -s -o /dev/null -w '%{http_code}\n' https://your.host/share/{token}
+   done | sort | uniq -c
+   ```
+2. Expected output: ~60 lines of `200`, then `429`s for the rest of the burst. The `share` RateLimiter caps the whole `/share/*` namespace at 60 req/min/IP — `/share/{token}/runs/{run}/replay` shares the same budget.
+
+**Verify prompt redaction (chunk-2 store_prompts=false path)**
+1. Sign in as a user whose **Settings → Store prompts** is OFF. Make sure that user has at least one thread with a terminal run.
+2. Enable sharing on that thread. Open the URL in an incognito window.
+3. The thread page shows a top-of-thread amber banner: *"The author has prompts disabled — prompt text is shown as `[prompt redacted by author]`."* Each run row substitutes `[prompt redacted by author]` for the prompt; assistant outputs are preserved verbatim. Replay also redacts the prompt the same way.
+
+**Verify cross-thread defense (chunk-2 invariant)**
+1. Owner: create two threads (T1 and T2), each with one terminal run. Enable sharing on T1 only.
+2. Note T1's share token + run ID. Note T2's run ID.
+3. Try: `GET /share/{T1-token}/runs/{T2-run-id}/replay` → 404. The controller's `abort_unless($run->thread_id === $thread->id, 404)` blocks the cross-thread navigation without acknowledging that the private run exists.
+
+### M11 retrospective
+
+What worked
+
+- **Always-regenerate token on enable simplified the entire UX.** The chunk-1 decision meant the chunk-3 disable affordance didn't need a confirmation dialog: re-enable is one click and produces a fresh URL, so an "accidental" disable has zero data-loss surface. The same invariant also produces the cleanest possible "I leaked the URL, kill it now" recovery story — toggle off, toggle back on, the old URL is permanently dead. One decision; downstream effects on UX, security model, and operator playbook.
+- **Standalone `Pages/Share/Show.tsx` over a `readOnly` flag on the live thread page.** Chunk-2 decision that paid off across the whole milestone. Zero risk of leaking the prompt input, the share toggle, the title editor, or the export menu into the public view via a missed conditional. The M8/M9 viz components are reused verbatim (no `if (!readOnly)` smell inside them); only the controller + page wrapper differ. The duplication cost is one run-row template, which is fine.
+- **Backend-side prompt redaction.** Chunk-2 decision. The controller substitutes `[prompt redacted by author]` for null prompts at the data layer; the frontend just renders strings. Means there's no frontend-code path that could ever leak an un-redacted prompt — `prompts_redacted: bool` on the props is just for the banner, not the redaction itself. Defensive in depth.
+- **Single `share` rate limiter for the whole `/share/*` namespace.** Chunk-2 decision. One `Limit::perMinute(60)->by($request->ip())` covers both the reader route and the replay route. SPEC said "IP rate-limited to 60/min"; reading that as a namespace budget (not per-route) keeps the operator surface to one tunable.
+- **ShareMenu reuses the M10 ExportDownloadMenu Popover pattern.** Chunk-3 decision. The Radix Popover affordance was already in the user's mental model from the export dropdown on the run rows; reusing it for share kept the header compact + cognitively familiar. The trigger button stays "Share" + a tiny indicator dot whether sharing is on or off — full state lives inside the popover, header stays dense.
+- **New `/about` page landed the AGPL §13 source link on the public surface.** Chunk-4 decision. The SharedLayout + Welcome both link to `/about` now, and the About page + SharedLayout both have the GitHub source link. AGPL §13 compliance for the *unauthenticated* surface is done; M14 still owns the cross-app audit for authed pages, but the externally-visible surface ships compliant.
+- **Cross-thread defense via `abort_unless($run->thread_id === $thread->id, 404)`.** Chunk-2 invariant. Cheap to write, but it's the difference between "valid token for thread A lets you navigate to a run in private thread B" and "404." 404 (not 403) keeps the existence of the private run unacknowledged.
+
+What we learned
+
+- **Vite manifest stale on new `Pages/*.tsx`.** Hit this twice — chunk 2 (Share/Show.tsx + Share/Replay.tsx) and chunk 4 (About.tsx). Pest's Inertia view-finder uses the production Vite manifest; new page files don't appear until `npx vite build` regenerates it. Canonical fix: rebuild between adding a page file and running Pest tests that render the page. Worth a quick check-and-rebuild pattern in any milestone that introduces new Inertia page components.
+- **jsdom doesn't ship `navigator.clipboard`.** Chunk-3 dev lesson. The standard mock pattern is `Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })` in `beforeEach`. Failing-clipboard tests need `mockRejectedValue(new Error('blocked'))` to exercise the `window.prompt` fallback path.
+- **`vi.hoisted` Inertia router mocks need every method the component calls.** Chunk-3 ShareMenu added a `router.post` call on a mock that previously only had `get/patch/delete` (the Threads/Show.test.tsx fixture). Symptom was "router.post is not a function" in the integration test. Fix: extend the hoist block + the spread mock + the `mockReset()` in `afterEach`. Worth treating as a checklist item any time a component starts using a new router method.
+- **ESLint `react/no-unescaped-entities` catches typographic punctuation in JSX text.** Chunk-4 — the pre-commit hook rejected `"bring your own key"` and `can't` in About.tsx text. Mechanical fix: `&apos;` / `&ldquo;` / `&rdquo;`. Worth keeping in mind whenever I write user-facing prose directly in JSX rather than in a `t()` call.
+- **Pint reformat still breaks chained Edits.** Same lesson the M10 retrospective documented. Hit again in chunk 3. The pattern is: when a commit hook reformats a file, in-flight Edit handles from before the reformat have stale `old_string` content. Re-Read after Pint runs, then re-Edit.
+
+Parked / carry-forward to M14
+
+- **Authed pages don't link to `/about` yet.** Per the chunk-4 scope, only `Pages/Welcome.tsx`, `Pages/Share/Show.tsx`, and `Pages/Share/Replay.tsx` link to it. The authenticated app (Dashboard, Threads, Settings, Admin) has no "About" / "What is this?" affordance. M14's AGPL §13 compliance audit task is the right owner — add a footer link to AppLayout there, audit every served page for the source link, and decide whether to surface About from the user menu.
+- **No browser-level E2E for the enable → incognito → disable → 404 flow.** Same call M6, M8, M9, and M10 closeouts all made: Playwright/Cypress lands in M14 Launch Prep, not now. The Pest + Vitest coverage validates the data plane + the component behavior; the manual recipe above is the human verification path until E2E ships.
+- **Shared replay doesn't subscribe to new runs.** A share URL is a snapshot at view-time — new runs the owner submits show up on refresh, not via WebSocket. Out of scope for M11 by design (anonymous WebSocket subscriptions on `private-runs.{id}` would require a separate `channels.php` auth route that doesn't gate on user identity). If someone asks for "live shared threads," it's Phase 2 / Phase 3 territory.
+- **No JSON-import endpoint for shared payloads.** M9 chunk 3 parked the import side; M11 doesn't add it either. A future "paste a `/share/{token}` URL into your own dashboard to clone the thread" UX would need both the JSON-import endpoint AND a `/share/{token}/export.json` companion to the existing owner-only export. Phase 2 candidate.
+
 **Exit criteria**
-- Toggling share on a thread produces a `/share/{token}` URL that works in an incognito window.
-- Replay works on the shared view.
-- Disabling sharing returns 404 for the old URL.
+- [x] **Toggling share on a thread produces a `/share/{token}` URL that works in an incognito window.** Covered programmatically by `ThreadShareControllerTest` (POST sets `share_token` + `share_enabled_at` + redirects) + `SharedThreadControllerTest` (the public `/share/{token}` route returns 200 + Inertia `Share/Show` for the resolved token, with sanitized props). Manual recipe above §"Enable + visit + replay" is the human verification path.
+- [x] **Replay works on the shared view.** Covered programmatically by `SharedReplayControllerTest` (200 + Inertia `Share/Replay` for valid token + run + terminal status; 422 for non-terminal; 404 for cross-thread; cross-thread defense) + the Vitest `Pages/Share/Replay.test.tsx` (renders PlaybackControls + viz pane + back-link). Manual recipe above step 5 (incognito play) is the human verification.
+- [x] **Disabling sharing returns 404 for the old URL.** Covered programmatically by `ThreadShareControllerTest` (DELETE nulls both columns + idempotent for already-unshared threads) + `SharedThreadControllerTest`'s 404-on-missing-token assertion. The chunk-1 always-regenerate decision strengthens this: even re-enabling produces a fresh token, so the old URL stays 404 forever. Manual recipe above §"Verify disable + token regeneration" is the human verification.
+
+Bonus invariants from the implementation:
+- [x] **Cross-thread token navigation returns 404, not 403.** Chunk-2 invariant. Pest `SharedReplayControllerTest::cross-thread defense` covers it.
+- [x] **Prompts are redacted for `store_prompts=false` owners.** Chunk-2 invariant. Pest covers both the redaction substitution and the `prompts_redacted: bool` flag on the page props.
+- [x] **Rate limit applies across the whole `/share/*` namespace.** Chunk-2 invariant. `AppServiceProvider` `share` RateLimiter is registered + applied in `routes/web.php`; the manual recipe above exercises it from the operator side.
+- [x] **`/about` is reachable for both anonymous and authed users.** Chunk-4. Pest `AboutPageTest` covers both auth states.
 
 ---
 
