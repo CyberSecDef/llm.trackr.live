@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import ErrorShell from './ErrorShell';
 
 export default function ServerError() {
@@ -6,6 +7,7 @@ export default function ServerError() {
             status={500}
             headline="Something went wrong"
             message="An unexpected error occurred on our end. The error has been logged; try again in a moment."
+            icon={<AlertTriangle className="h-12 w-12" aria-hidden="true" />}
         />
     );
 }

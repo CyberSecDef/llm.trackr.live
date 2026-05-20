@@ -48,7 +48,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 403 => 'Errors/Forbidden',
                 404 => 'Errors/NotFound',
                 419 => 'Errors/Expired',
-                500, 503 => 'Errors/ServerError',
+                500 => 'Errors/ServerError',
+                503 => 'Errors/Maintenance',
                 default => null,
             };
             if ($component === null) {

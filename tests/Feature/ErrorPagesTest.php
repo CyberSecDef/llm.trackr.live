@@ -42,6 +42,22 @@ it('renders the ServerError Inertia page for a 500', function () {
         ->assertInertia(fn ($page) => $page->component('Errors/ServerError'));
 });
 
+it('renders the Maintenance Inertia page for a 503 (M12 chunk 7)', function () {
+    Route::get('/test-503', fn () => abort(503))->middleware('web');
+
+    $this->get('/test-503')
+        ->assertStatus(503)
+        ->assertInertia(fn ($page) => $page->component('Errors/Maintenance'));
+});
+
+it('renders the Expired Inertia page for a 419', function () {
+    Route::get('/test-419', fn () => abort(419))->middleware('web');
+
+    $this->get('/test-419')
+        ->assertStatus(419)
+        ->assertInertia(fn ($page) => $page->component('Errors/Expired'));
+});
+
 it('renders error pages for unauthenticated users', function () {
     // Same 404 path, but without actingAs() — proves the Errors/*
     // pages don't require auth (they're not wrapped in AppLayout).
