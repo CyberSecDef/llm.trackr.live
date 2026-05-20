@@ -4,6 +4,7 @@ use App\Events\Runs\ExportCompleted;
 use App\Jobs\ExportRunGif;
 use App\Models\Run;
 use App\Models\User;
+use App\Services\Exports\ChromiumDetector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
@@ -49,8 +50,32 @@ describe('POST /runs/{run}/export — cache hit', function () {
                 'ready' => true,
                 'gif_url' => "http://localhost/runs/{$run->id}/exports/gif",
                 'mp4_url' => "http://localhost/runs/{$run->id}/exports/mp4",
+                'fallback_engaged' => false,
             ]);
         Bus::assertNotDispatched(ExportRunGif::class);
+    });
+
+    it('returns fallback_engaged=true when puppeteer is configured but Chromium is missing (chunk 6)', function () {
+        Event::fake([ExportCompleted::class]);
+        $user = User::factory()->create();
+        $run = Run::factory()->for($user)->create();
+        Storage::disk('local')->put("exports/{$run->id}.gif", 'x');
+        Storage::disk('local')->put("exports/{$run->id}.mp4", 'x');
+
+        config()->set('gif_export.renderer', 'puppeteer');
+        app()->instance(
+            ChromiumDetector::class,
+            new ChromiumDetector(['/never']),
+        );
+
+        $response = $this->actingAs($user)->postJson("/runs/{$run->id}/export");
+        $response->assertOk()->assertJson(['fallback_engaged' => true]);
+
+        // The broadcast should also carry fallback_engaged=true.
+        Event::assertDispatched(
+            ExportCompleted::class,
+            fn ($e) => $e->fallbackEngaged === true,
+        );
     });
 
     it('broadcasts ExportCompleted on cache hit so other tabs flip state', function () {
@@ -75,7 +100,11 @@ describe('POST /runs/{run}/export — cache miss', function () {
         $response = $this->actingAs($user)->postJson("/runs/{$run->id}/export");
 
         $response->assertStatus(202)
-            ->assertJson(['ready' => false, 'status' => 'queued']);
+            ->assertJson([
+                'ready' => false,
+                'status' => 'queued',
+                'fallback_engaged' => false,
+            ]);
         Bus::assertDispatched(ExportRunGif::class, fn ($job) => $job->runId === $run->id);
     });
 

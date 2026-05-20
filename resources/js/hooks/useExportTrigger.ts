@@ -32,6 +32,10 @@ export interface ExportTriggerResult {
     gifUrl: string | null;
     mp4Url: string | null;
     error: string | null;
+    /** True when the configured `puppeteer` renderer was swapped
+     *  for the SVG fallback (M10 chunk 6). The chooser surfaces
+     *  this as a "(2D fallback)" subtitle on the GIF/MP4 items. */
+    fallbackEngaged: boolean;
     trigger(): Promise<void>;
     reset(): void;
 }
@@ -42,6 +46,7 @@ interface ExportCompletedPayload {
     mp4_url: string;
     frames_count: number;
     duration_ms: number;
+    fallback_engaged?: boolean;
 }
 
 interface ExportFailedPayload {
@@ -54,6 +59,7 @@ interface TriggerOkResponse {
     gif_url?: string;
     mp4_url?: string;
     status?: string;
+    fallback_engaged?: boolean;
 }
 
 export function useExportTrigger(runId: number | null): ExportTriggerResult {
@@ -61,6 +67,7 @@ export function useExportTrigger(runId: number | null): ExportTriggerResult {
     const [gifUrl, setGifUrl] = useState<string | null>(null);
     const [mp4Url, setMp4Url] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [fallbackEngaged, setFallbackEngaged] = useState<boolean>(false);
 
     // Track active subscription so we can tear it down on unmount /
     // runId change. The hook is mounted by an always-rendered
@@ -85,6 +92,7 @@ export function useExportTrigger(runId: number | null): ExportTriggerResult {
         setGifUrl(null);
         setMp4Url(null);
         setError(null);
+        setFallbackEngaged(false);
     }, [teardown]);
 
     const subscribe = useCallback(
@@ -98,6 +106,7 @@ export function useExportTrigger(runId: number | null): ExportTriggerResult {
                 if (payload.run_id !== id) return;
                 setGifUrl(payload.gif_url);
                 setMp4Url(payload.mp4_url);
+                setFallbackEngaged(Boolean(payload.fallback_engaged));
                 setState('ready');
                 teardown();
             });
@@ -152,13 +161,18 @@ export function useExportTrigger(runId: number | null): ExportTriggerResult {
         if (data.ready && data.gif_url && data.mp4_url) {
             setGifUrl(data.gif_url);
             setMp4Url(data.mp4_url);
+            setFallbackEngaged(Boolean(data.fallback_engaged));
             setState('ready');
             return;
         }
 
-        // Cache miss: subscribe + wait for broadcast.
+        // Cache miss: subscribe + wait for broadcast. The 202
+        // response can still tell us the renderer is in fallback
+        // mode — surface it now so the rendering UI can hint at
+        // what's about to be produced.
+        setFallbackEngaged(Boolean(data.fallback_engaged));
         subscribe(runId);
     }, [runId, subscribe, teardown]);
 
-    return { state, gifUrl, mp4Url, error, trigger, reset };
+    return { state, gifUrl, mp4Url, error, fallbackEngaged, trigger, reset };
 }

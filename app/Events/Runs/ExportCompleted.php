@@ -34,6 +34,9 @@ class ExportCompleted implements ShouldBroadcastNow
         public readonly string $mp4Url,
         public readonly int $framesCount,
         public readonly int $durationMs,
+        /** True when the SVG renderer ran in place of the
+         *  configured `puppeteer` driver (M10 chunk 6 fallback). */
+        public readonly bool $fallbackEngaged = false,
     ) {}
 
     /** @return list<Channel> */
@@ -51,6 +54,7 @@ class ExportCompleted implements ShouldBroadcastNow
             'mp4_url' => $this->mp4Url,
             'frames_count' => $this->framesCount,
             'duration_ms' => $this->durationMs,
+            'fallback_engaged' => $this->fallbackEngaged,
         ];
     }
 

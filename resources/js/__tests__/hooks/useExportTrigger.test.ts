@@ -220,6 +220,56 @@ describe('useExportTrigger', () => {
         expect(result.current.state).toBe('rendering');
     });
 
+    it('M10 chunk 6: exposes fallbackEngaged from a cache-hit response', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    ready: true,
+                    gif_url: '/g',
+                    mp4_url: '/m',
+                    fallback_engaged: true,
+                }),
+        });
+
+        const { result } = renderHook(() => useExportTrigger(42));
+        await act(async () => {
+            await result.current.trigger();
+        });
+
+        expect(result.current.fallbackEngaged).toBe(true);
+        expect(result.current.state).toBe('ready');
+    });
+
+    it('M10 chunk 6: exposes fallbackEngaged from an export.completed broadcast', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+            ok: false,
+            status: 202,
+            json: () => Promise.resolve({ ready: false, fallback_engaged: false }),
+        });
+
+        const { result } = renderHook(() => useExportTrigger(33));
+        await act(async () => {
+            await result.current.trigger();
+        });
+
+        await act(async () => {
+            echo.channels['runs.33'].fire('.export.completed', {
+                run_id: 33,
+                gif_url: '/g',
+                mp4_url: '/m',
+                frames_count: 1,
+                duration_ms: 1,
+                fallback_engaged: true,
+            });
+        });
+
+        expect(result.current.fallbackEngaged).toBe(true);
+    });
+
     it('returns null URLs + skips the subscribe path when Echo is unavailable', async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         delete (window as any).Echo;

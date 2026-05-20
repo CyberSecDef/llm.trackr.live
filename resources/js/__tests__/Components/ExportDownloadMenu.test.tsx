@@ -132,6 +132,56 @@ describe('<ExportDownloadMenu />', () => {
         });
     });
 
+    it('M10 chunk 6: shows (2D fallback) badge when fallback_engaged is true on a cache hit', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    ready: true,
+                    gif_url: '/runs/42/exports/gif',
+                    mp4_url: '/runs/42/exports/mp4',
+                    fallback_engaged: true,
+                }),
+        });
+
+        render(<ExportDownloadMenu runId={42} jsonHref="/runs/42/export.json" />);
+        fireEvent.click(screen.getByTestId('export-menu-trigger'));
+        fireEvent.click(screen.getByTestId('export-menu-gif'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('export-menu-gif-fallback')).toBeInTheDocument();
+            expect(screen.getByTestId('export-menu-mp4-fallback')).toBeInTheDocument();
+        });
+        // Both badges read "(2D fallback)".
+        expect(screen.getByTestId('export-menu-gif-fallback').textContent).toContain('2D fallback');
+    });
+
+    it('M10 chunk 6: no fallback badge when fallback_engaged is false', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    ready: true,
+                    gif_url: '/g',
+                    mp4_url: '/m',
+                    fallback_engaged: false,
+                }),
+        });
+
+        render(<ExportDownloadMenu runId={42} jsonHref="/runs/42/export.json" />);
+        fireEvent.click(screen.getByTestId('export-menu-trigger'));
+        fireEvent.click(screen.getByTestId('export-menu-gif'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('export-menu-gif').tagName).toBe('A');
+        });
+        expect(screen.queryByTestId('export-menu-gif-fallback')).not.toBeInTheDocument();
+    });
+
     it('shows error chip when broadcast says export.failed', async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (globalThis as any).fetch = vi.fn().mockResolvedValue({

@@ -6,6 +6,7 @@ use App\Events\Runs\ExportCompleted;
 use App\Jobs\ExportRunGif;
 use App\Models\Run;
 use App\Services\Exports\ExportStorage;
+use App\Services\Exports\GifRendererFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,11 +28,21 @@ use Illuminate\Http\Request;
  */
 class ExportTriggerController extends Controller
 {
-    public function __construct(private readonly ExportStorage $storage) {}
+    public function __construct(
+        private readonly ExportStorage $storage,
+        private readonly GifRendererFactory $factory,
+    ) {}
 
     public function store(Request $request, Run $run): JsonResponse
     {
         abort_unless($run->user_id === $request->user()->id, 403);
+
+        // Resolve the factory once so we can report the active
+        // renderer's fallback state on both branches (cache hit AND
+        // cache miss). Cheap: the factory's render-resolution path
+        // is a couple of `is_executable` checks + container lookups.
+        $this->factory->make();
+        $fallbackEngaged = $this->factory->fallbackEngaged();
 
         if ($this->storage->bothExist($run->id)) {
             $gifUrl = $this->fileUrl($run, 'gif');
@@ -45,12 +56,14 @@ class ExportTriggerController extends Controller
                 mp4Url: $mp4Url,
                 framesCount: 0,
                 durationMs: 0,
+                fallbackEngaged: $fallbackEngaged,
             ));
 
             return response()->json([
                 'ready' => true,
                 'gif_url' => $gifUrl,
                 'mp4_url' => $mp4Url,
+                'fallback_engaged' => $fallbackEngaged,
             ], 200);
         }
 
@@ -59,6 +72,7 @@ class ExportTriggerController extends Controller
         return response()->json([
             'ready' => false,
             'status' => 'queued',
+            'fallback_engaged' => $fallbackEngaged,
         ], 202);
     }
 

@@ -36,7 +36,7 @@ describe('ExportCompleted', function () {
         expect($event->broadcastAs())->toBe('export.completed');
     });
 
-    it('payload includes run_id, gif_url, mp4_url, frames_count, duration_ms', function () {
+    it('payload includes run_id, gif_url, mp4_url, frames_count, duration_ms, fallback_engaged', function () {
         $run = Run::factory()->create();
         $event = new ExportCompleted(
             run: $run,
@@ -44,6 +44,7 @@ describe('ExportCompleted', function () {
             mp4Url: "/runs/{$run->id}/exports/mp4",
             framesCount: 90,
             durationMs: 3_000,
+            fallbackEngaged: true,
         );
 
         expect($event->broadcastWith())->toEqual([
@@ -52,7 +53,19 @@ describe('ExportCompleted', function () {
             'mp4_url' => "/runs/{$run->id}/exports/mp4",
             'frames_count' => 90,
             'duration_ms' => 3_000,
+            'fallback_engaged' => true,
         ]);
+    });
+
+    it('fallback_engaged defaults to false (chunk 6)', function () {
+        $event = new ExportCompleted(
+            Run::factory()->create(),
+            '/g',
+            '/m',
+            10,
+            500,
+        );
+        expect($event->broadcastWith()['fallback_engaged'])->toBeFalse();
     });
 });
 

@@ -87,6 +87,7 @@ export default function ExportDownloadMenu({
                     state={exportTrigger.state}
                     href={exportTrigger.gifUrl}
                     onClick={handleVideoClick}
+                    fallbackEngaged={exportTrigger.fallbackEngaged}
                     testId="export-menu-gif"
                 />
                 <MenuItem
@@ -95,6 +96,7 @@ export default function ExportDownloadMenu({
                     state={exportTrigger.state}
                     href={exportTrigger.mp4Url}
                     onClick={handleVideoClick}
+                    fallbackEngaged={exportTrigger.fallbackEngaged}
                     testId="export-menu-mp4"
                 />
 
@@ -118,6 +120,7 @@ function MenuItem({
     state,
     href,
     onClick,
+    fallbackEngaged,
     testId,
 }: {
     label: string;
@@ -125,10 +128,21 @@ function MenuItem({
     state: ReturnType<typeof useExportTrigger>['state'];
     href: string | null;
     onClick: () => void;
+    fallbackEngaged: boolean;
     testId: string;
 }) {
     const isRendering = state === 'rendering';
     const isReady = state === 'ready' && href !== null;
+
+    // M10 chunk 6: "(2D fallback)" badge when the SVG renderer
+    // produced the artifact in place of the configured puppeteer
+    // driver. Shown both while rendering (so the user knows what
+    // to expect) and once the file is ready.
+    const fallbackBadge = fallbackEngaged ? (
+        <span className="ml-1 text-[10px] italic text-amber-500" data-testid={`${testId}-fallback`}>
+            (2D fallback)
+        </span>
+    ) : null;
 
     if (isReady && href !== null) {
         return (
@@ -139,7 +153,10 @@ function MenuItem({
                 data-testid={testId}
             >
                 <Download className="h-3 w-3" aria-hidden="true" />
-                <span className="flex-1">{label}</span>
+                <span className="flex-1">
+                    {label}
+                    {fallbackBadge}
+                </span>
                 <span className="text-[10px] text-muted-foreground">{extension}</span>
             </a>
         );
@@ -164,6 +181,7 @@ function MenuItem({
             <span className="flex-1 text-left">
                 {label}
                 {isRendering && <span className="ml-1 text-muted-foreground">(rendering…)</span>}
+                {fallbackBadge}
             </span>
             <span className="text-[10px] text-muted-foreground">{extension}</span>
         </button>

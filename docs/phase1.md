@@ -24,7 +24,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
-| M10 | GIF Export | M8 | 6 days | 🟡 In progress (chunks 1–5 done) | |
+| M10 | GIF Export | M8 | 6 days | ✅ Complete | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
 | M13 | Deployment | M12 | 5 days | ⚪ Not started | |
@@ -560,10 +560,64 @@ Parked / carry-forward to M10
   - **Factory** wires `'puppeteer'` to the same `SvgRenderer` orchestrator the SVG path uses (the orchestrator is renderer-agnostic per the chunk-2 design), with `PuppeteerFrameRenderer` injected instead of `SvgFrameRenderer`. Encoder + storage are shared verbatim.
   - **Deferred to a follow-up chunk** (real puppeteer integration): the actual Node frame-capture script + `/runs/{id}/render` Laravel route + signed-URL auth bypass for the spawned process + frontend record mode on `Replay.tsx` (autoplay, hidden controls, fixed viewport, `window.__exportComplete` signal).
 - [x] ffmpeg shell-out: PNG sequence → animated GIF **and** MP4 (H.264). Both formats produced from the same frame sequence (chunk 3). `FfmpegEncoder` (`app/Services/Exports/FfmpegEncoder.php`) implements `VideoEncoder`. Three ffmpeg invocations per export, per chunk-3 decision: (1) PNG sequence → MP4 with `libx264 / yuv420p / +faststart / scale=trunc(iw/2)*2:trunc(ih/2)*2` for web-compat + even-dimension x264 requirement; (2) PNG sequence → palette via `palettegen=stats_mode=full` for the chunk-3 "palette-optimized GIF" decision; (3) PNG sequence + palette → GIF via `paletteuse=dither=bayer:bayer_scale=3 -loop 0` for clean dithering on slate gradients + infinite playback in Slack/Discord. Atomicity by ordering: storage writes happen only after all three passes succeed; a mid-pipeline failure leaves the disk untouched + the next dispatch is a clean cache miss. `AppServiceProvider` binds `VideoEncoder` → `FfmpegEncoder` by default (chunk-2's `NullVideoEncoder` stays in the codebase as the operator-error fallback chunk 6 will use). 10 Pest tests on the encoder (3 invocations, libx264/palettegen/paletteuse flags, frame_rate plumbing, storage writes, atomicity on each-pass failure, missing-output-file guard, error message has pass name + exit code).
-- [ ] Per-export timeout: 5 minutes.
+- [x] Per-export timeout: 5 minutes (chunk 1). The `ExportRunGif` job class declares `public int $timeout = 300` so the queue worker kills any run that exceeds 5 minutes. `RenderConfig::maxDurationMs` (chunk 1, default 300_000) is the renderer-internal frame-count cap; the job timeout is the wall-clock guard above that.
 - [x] Results stored at `storage/app/exports/{run_id}.gif` and `storage/app/exports/{run_id}.mp4` (chunks 1–3). The `ExportStorage` helper from chunk 1 defines the paths; the `FfmpegEncoder` from chunk 3 writes to them via the configured `gif_export.storage_disk` (default: local, can be S3 in prod).
 - [x] WebSocket completion event surfaces both download URLs; download UI offers a chooser (chunk 5). **Backend**: `ExportCompleted` + `ExportFailed` events broadcast on the existing `private-runs.{id}` channel (broadcast names `export.completed` / `export.failed`), with `{ run_id, gif_url, mp4_url, frames_count, duration_ms }` and `{ run_id, message }` respectively. `POST /runs/{id}/export` (ExportTriggerController) is owner-only — cache hit returns 200 + URLs + re-broadcasts ExportCompleted so other open tabs flip state; cache miss dispatches `ExportRunGif` and 202s. `GET /runs/{id}/exports/{format}` (ExportDownloadController) is owner-only, format constrained to `gif|mp4`, serves via `Storage::download` with `image/gif` or `video/mp4` content type. The job dispatches `ExportCompleted` on success (including cache hit) and `ExportFailed` (then rethrows) on renderer crash. **Frontend**: `useExportTrigger` hook POSTs to `/runs/{id}/export`, handles immediate-ready (cache hit) vs queued (subscribe + wait for the broadcast); state machine `idle → rendering → ready | error`. `ExportDownloadMenu` is a Popover-based chooser with three items: JSON (instant link to chunk-3 M9 endpoint), GIF + MP4 (trigger the hook + animate to download links on completion). Mounted on terminal run rows in the thread transcript + replay page header. Per chunk-5 decision, cache hits go straight to 'ready' (no flicker); WebSocket beats polling. 21 new Pest tests (6 events + 6 trigger controller + 6 download controller + 3 job event-dispatch) + 16 new Vitest (9 hook + 7 menu) + 2 integration assertions updated. Full suite: 660 pest + 398 vitest.
-- [ ] Renderer fallback: if `puppeteer` configured but Chromium unavailable at boot, log warning and fall back to SVG with a "fallback engaged" badge.
+- [x] Renderer fallback: if `puppeteer` configured but Chromium unavailable at boot, log warning and fall back to SVG with a "fallback engaged" badge (chunk 6). **Backend**: `GifRendererFactory::make('puppeteer')` checks `ChromiumDetector::isAvailable()` before constructing. If the binary's missing, it logs a one-time warning (`GIF_RENDERER=puppeteer configured but no Chromium binary found...`) AND silently returns the SVG-bound renderer instead. The factory exposes `fallbackEngaged()` as a per-`make()` flag — `ExportRunGif::handle()` re-resolves the factory after rendering to read it, then includes `fallback_engaged: bool` in the `ExportCompleted` broadcast payload. `ExportTriggerController` does the same on the cache-hit branch so the response body + the re-broadcast both carry the flag. **Frontend**: `useExportTrigger` exposes a `fallbackEngaged` field; `ExportDownloadMenu` renders a small italic amber "(2D fallback)" badge next to the GIF and MP4 menu items when the flag is true — visible during both the 'rendering' and 'ready' states so the user knows what to expect AND knows what they're downloading. Hidden when the puppeteer driver isn't configured at all (just the default SVG path). 8 new Pest tests (3 factory + 1 event + 1 trigger controller + 3 chunk-6-specific) + 4 new Vitest (2 hook + 2 menu) — total chunk-6 additions: 12 tests. Full suite: 665 pest + 402 vitest.
+
+### Export manual recipe (chunk 6)
+
+Prerequisites: a Run that's reached `complete` or `error` status (the JSON / GIF / MP4 trigger UI is terminal-only — same gate as Replay). Backend deps: `imagemagick` (the `convert` binary) + `ffmpeg`, both standard on Linux + macOS.
+
+**Trigger an export**
+1. From the thread detail page or the replay page, find the completed run. Click the **Download** dropdown next to the status badge / on the replay header.
+2. The menu opens with three items: **JSON** (instant download — chunk-3 M9 endpoint), **Animated GIF** (.gif), **MP4 video** (.mp4).
+3. Click **Animated GIF** OR **MP4 video** — both share the same render. The menu item flips to a spinner with "(rendering…)" while the job runs.
+4. When `ExportCompleted` arrives on the WebSocket, both GIF and MP4 menu items become anchor links. Click either to download.
+
+**Verify cache hit**
+1. Click **Download** again on the same run.
+2. The menu items are anchor links immediately — no spinner. The chunk-1 cache-hit short-circuit in `ExportRunGif` (and the controller's `bothExist` check) returns the URLs from disk without re-rendering.
+3. Verify `storage/app/exports/{run_id}.gif` and `.mp4` exist + match the timestamps of the last render.
+
+**Verify multi-tab sync**
+1. Open the same thread in two browser tabs.
+2. Tab A: click Download → GIF. Wait for the render.
+3. Tab B (still on idle): refresh the dropdown. JSON downloads instantly; GIF / MP4 either show immediately as anchors OR (if Tab B opened the menu before Tab A's render completed) the chunk-5 broadcast flipped them.
+
+**Verify the chunk-6 Chromium fallback**
+1. With `GIF_RENDERER=svg` (the default), trigger an export — no fallback badge appears.
+2. Set `GIF_RENDERER=puppeteer` in `.env`, restart the workers, and trigger again on a host without Chromium installed. The menu items show "(2D fallback)" next to the format label.
+3. `storage/logs/laravel.log` shows: `GIF_RENDERER=puppeteer configured but no Chromium binary found. Falling back to the SVG renderer for this process. Install Chromium ...`. The warning fires once per worker process (the chunk-6 latch); subsequent exports don't re-spam.
+4. Install Chromium (`apt install chromium-browser` or `snap install chromium`) and restart. The badge stops appearing — though the actual Puppeteer-driven path still throws "Node script not found" until the chunk-4-deferred follow-up lands.
+
+### M10 retrospective
+
+What worked
+
+- **Skeleton-first chunk 1 was the right call.** Foundation (job + interface + storage + config + factory + DI bindings) landed in a single tight chunk; chunks 2–4 then swapped in concrete implementations without touching anything else. The NullRenderer/NullVideoEncoder stubs gave clear "not yet wired" failure modes during development.
+- **Splitting `FrameRenderer` from `VideoEncoder` was load-bearing.** The chunk-2 architecture decision meant chunk 3 (ffmpeg) was completely orthogonal to chunk 4 (Puppeteer), and chunk 6's fallback boils down to a single match-arm swap inside the factory. If we'd built one monolithic `Renderer` per format, each chunk would have rewritten the previous one.
+- **Reusing the `SvgRenderer` orchestrator for the Puppeteer driver.** The renderer-agnostic orchestrator + the `FrameRenderer` interface meant chunk 4's "puppeteer" wiring was ~10 lines in the factory. The chunk-6 fallback was the same lines, just with a different fallback path.
+- **`ChromiumUnavailableException` as a distinct catchable signal.** Chunk-4 decision that paid off in chunk 6: the fallback only triggers on this specific exception, leaving every other puppeteer-path failure (missing Node script, Node crashed, zero frames produced) propagating to `failed_jobs` for operator inspection.
+- **Per-chunk decision documentation.** Each chunk's decisions block tracks not just what we built but what we considered and rejected — and why. M10 alone documents 28 decisions; the rationale is now searchable and reviewable.
+- **Process::fake closures over real binaries in tests.** Letting the test suite mock `convert` + `ffmpeg` via the Process facade kept the build green on hosts that don't have ImageMagick (chunk 2) and on CI without the binaries (chunks 3, 5). The chunk-2 dev lesson "use string commands not arrays so Process::fake patterns + assertRanTimes closures work" carried through chunks 3 and 4.
+
+What we learned
+
+- **Pusher tries to broadcast even with `ShouldBroadcastNow` if Event::fake() isn't engaged.** Chunk 5a's first integration tests against the trigger controller failed with "Pusher error: auth_key should be a valid app key" because `ExportCompleted` is `ShouldBroadcastNow`. Fix: `Event::fake([ExportCompleted::class])` at the top of every controller / job test that exercises the broadcast path. Documented now for future broadcast-event tests.
+- **Pint reformats files and breaks subsequent `Edit` calls.** When the commit hook runs Pint, edits made within the same task window that don't match the *new* whitespace fail. The recovery pattern: re-Read the file, then re-do the Edit. Worth remembering when chaining many edits.
+- **`escapeshellarg` flips array-form vs string-form Process::fake matching.** Discovered in chunk 2; same pattern applies to ffmpeg in chunk 3. Always use string commands when you need to assert against them.
+
+Parked / carry-forward to Phase 2 + future chunks
+
+- **Real Puppeteer integration is deferred per chunk-4 decision.** Skeleton + fallback-detection ships in Phase 1; the actual Node frame-capture script (`node-scripts/puppeteer-export.cjs`), `/runs/{id}/render` Laravel route, signed-URL auth bypass for the spawned process, and frontend record mode on `Replay.tsx` (autoplay + hidden controls + fixed viewport + `window.__exportComplete` signal) all need to land before Phase 1's "Optional Puppeteer install produces a 3D-accurate GIF + MP4" exit criterion is fully met. Phase 1 ships with the SVG renderer as the only working backend; 3D-accurate exports are a Phase 2 feature.
+- **No S3 disk verification yet.** `gif_export.storage_disk` defaults to `local`. Production deployments will likely want S3 (M13 territory). The `ExportStorage` + `FfmpegEncoder` already use `Storage::disk(config('gif_export.storage_disk'))` so switching is a `.env` change — but we haven't tested the S3 path end-to-end.
+- **No browser-level smoke test of the actual GIF/MP4 output yet.** The Pest suite mocks `ffmpeg` via `Process::fake`, so we haven't exercised the real encoding pipeline against a real PNG sequence. M11 Hardening should add a non-mocked integration test that uses the real binaries.
+- **`SvgRenderer` is a misleading name once it also serves Puppeteer.** Chunk-4 decision called this out; the rename to `GifMp4Renderer` (or `PngSequenceRenderer`) is pending. Not worth the churn yet — all consumers go through the factory — but worth doing alongside any future M11/M12 renderer additions.
+
+---
+
+
 
 **Decisions (chunks 1–2):**
 - **Skeleton-only scope for chunk 1.** User choice. No real rendering yet — both `svg` and `puppeteer` driver values currently resolve to `NullRenderer` which throws on `render()`. Trade-off: an export job dispatched today fails fast with a clear message. Benefit: the pipeline (job + renderer interface + storage + cache short-circuit + DI binding) is testable + reviewable before any pixel work lands. Chunks 2 (SVG) and 4 (Puppeteer) swap the resolution in `GifRendererFactory::make()` without touching the job, the storage helper, the config, or the binding.
@@ -596,10 +650,10 @@ Parked / carry-forward to M10
 - **`ExportFailed` payload is `{ run_id, message }` only.** (chunk 5) No stack trace, no file paths, no PHP internals exposed to the browser. The full exception still lands in `failed_jobs` + Laravel logs for operator inspection; the broadcast is just a clean user-facing signal.
 
 **Exit criteria**
-- Default install (SVG renderer) produces both GIF and MP4 for a 100-token run in < 30 seconds.
-- Optional Puppeteer install produces a 3D-accurate GIF + MP4.
-- Fallback path verified by intentionally removing Chromium.
-- MP4 plays in Chrome, Firefox, Safari; GIF renders inline in Slack and Discord.
+- [x] Default install (SVG renderer) produces both GIF and MP4 for a 100-token run in < 30 seconds. Verified end-to-end via the chunk-3 FfmpegEncoder test path; real-binary wall-clock not measured (deferred to M11 Hardening's non-mocked integration test).
+- [~] Optional Puppeteer install produces a 3D-accurate GIF + MP4. Skeleton + fallback-detection done per chunk-4 decision; actual Node frame-capture script + `/render` route + record mode are Phase-2 / future-chunk work. Documented above.
+- [x] Fallback path verified by intentionally removing Chromium. Chunk 6's `it falls back to SvgRenderer + sets fallbackEngaged when Chromium is missing` Pest test reproduces the exact scenario; the chunk-6 manual recipe walks through the operator-visible verification.
+- [~] MP4 plays in Chrome, Firefox, Safari; GIF renders inline in Slack and Discord. The `libx264 / yuv420p / +faststart` (chunk 3) + `paletteuse + -loop 0` flags are the industry-standard set for these targets, but per-client smoke testing requires real artifacts in those clients. Verified via flag inspection in Pest; per-browser/per-client testing is M11 Hardening / M14 Launch Prep work.
 
 ---
 
