@@ -34,7 +34,7 @@ class RunExportSerializer
     public function __construct(private readonly Run $run) {}
 
     /**
-     * Build the export array. Stable shape across calls.
+     * Build the full single-run export document.
      *
      * @return array<string, mixed>
      */
@@ -52,25 +52,39 @@ class RunExportSerializer
                 'title' => $thread->title,
                 'tags' => $thread->tags ?? [],
             ],
-            'run' => [
-                'id' => $run->id,
-                'sequence_in_thread' => $run->sequence_in_thread,
-                'status' => $run->status->value,
-                'prompt' => $run->prompt,
-                'output_text' => $run->output_text,
-                'error_message' => $run->error_message,
-                'input_tokens' => $run->input_tokens,
-                'output_tokens' => $run->output_tokens,
-                'duration_ms' => $run->duration_ms,
-                'tokens_per_second' => $run->tokens_per_second,
-                'estimated_cost' => $run->estimated_cost,
-                // Parameters carry the model_snapshot — that's the
-                // canonical replay source per SPEC §10.1. Keep verbatim.
-                'parameters' => $run->parameters,
-                'conversation_history' => $run->conversation_history,
-                'token_log' => $run->token_log,
-                'created_at' => $run->created_at?->toIso8601String(),
-            ],
+            'run' => self::runSection($run),
+        ];
+    }
+
+    /**
+     * Just the per-run portion of the export — extracted so the
+     * thread-level export (chunk 4) can reuse it without duplication.
+     *
+     * Static + public so callers without an instance can use it
+     * (`ThreadExportSerializer` maps over the thread's runs).
+     *
+     * @return array<string, mixed>
+     */
+    public static function runSection(Run $run): array
+    {
+        return [
+            'id' => $run->id,
+            'sequence_in_thread' => $run->sequence_in_thread,
+            'status' => $run->status->value,
+            'prompt' => $run->prompt,
+            'output_text' => $run->output_text,
+            'error_message' => $run->error_message,
+            'input_tokens' => $run->input_tokens,
+            'output_tokens' => $run->output_tokens,
+            'duration_ms' => $run->duration_ms,
+            'tokens_per_second' => $run->tokens_per_second,
+            'estimated_cost' => $run->estimated_cost,
+            // Parameters carry the model_snapshot — that's the
+            // canonical replay source per SPEC §10.1. Keep verbatim.
+            'parameters' => $run->parameters,
+            'conversation_history' => $run->conversation_history,
+            'token_log' => $run->token_log,
+            'created_at' => $run->created_at?->toIso8601String(),
         ];
     }
 }

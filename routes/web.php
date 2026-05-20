@@ -14,6 +14,7 @@ use App\Http\Controllers\RunExportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
 use App\Http\Controllers\ThreadController;
+use App\Http\Controllers\ThreadExportController;
 use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -133,6 +134,12 @@ Route::middleware('auth')->group(function () {
     // run-{id}.json instead of rendering inline.
     Route::get('runs/{run}/export.json', [RunExportController::class, 'show'])
         ->name('runs.export');
+
+    // JSON export of a whole thread (M9 chunk 4). Owner-only.
+    // Returns the same schema as the single-run export but with a
+    // `runs: []` array instead of a `run: {}` object.
+    Route::get('threads/{thread}/export.json', [ThreadExportController::class, 'show'])
+        ->name('threads.export');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
