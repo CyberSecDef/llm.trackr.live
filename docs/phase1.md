@@ -23,7 +23,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
-| M9 | Replay + JSON Export | M8 | 4 days | 🟡 In progress (chunks 1–5 done) | |
+| M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
 | M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
@@ -500,8 +500,50 @@ Parked / carry-forward to M9
 - **Thread Export button uses shadcn `Button` with `asChild`.** (chunk 5) Keeps the visual language identical to the adjacent `Title` / `Archive` / `Delete` buttons. `asChild` renders the `Button`'s styles onto the inner `<a>` so we get the right outlined look without nesting buttons-in-buttons or losing the anchor's download behavior.
 
 **Exit criteria**
-- Replaying a 100-token run shows the same animation as the original generation.
-- Exported JSON re-imports cleanly (round-trip test).
+- [x] Replaying a 100-token run shows the same animation as the original generation. Verified at the data layer by `ReplayDeterminismTest` (byte-equal events across instances, identical MoE expert routing per `(run.id, token_index)`, stable event ordering — chunk 2). Verified at the rendering layer by the chunk-2 strict-determinism path: every visual signal (cascade timing, MoE routing, attention pattern, logits, embedding spotlight, particle burst size + jitter positions) is a pure function of `payload.index`. The manual recipe step 1–4 below covers the human verification.
+- [x] Exported JSON re-imports cleanly (round-trip test). Verified by `RunExportSerializerTest::it('round-trip: encodes to JSON and decodes back to an identical array')` and the controller's round-trip parsing assertion, plus the thread-export equivalents.
+
+### Replay + Export manual recipe (chunk 6)
+
+Prerequisites: a Run that's reached `complete` or `error` status. Quickest path: submit any prompt against any vendor (`gpt-4o-mini` is cheap + fast).
+
+**Replay**
+1. From the thread detail page (`/threads/{id}`), find the completed run's row in the transcript. Click the **Replay** pill next to the status badge.
+2. The replay page (`/threads/{id}/runs/{id}/replay`) opens. Header shows back-to-thread + Download JSON; below sits the prompt and an empty assistant body with a blinking cursor — replay starts paused at cursor 0 per the chunk-1 decision.
+3. Click **Play** in the PlaybackControls toolbar. The viz, the assistant text, the logits chart, the MoE routing (if MoE), and the embedding spotlight all advance through the saved event stream. At 1× the dispenser fires ~30 events/sec; 0.5× slows to ~15; 2×/4× drain faster.
+4. Click **Step** while paused to walk one token at a time. Click **Embeddings** in the right-pane toggle to watch the vocab cloud light up matched tokens.
+5. Reload the page. The replay starts paused at cursor 0 again. Click Play. The particle bursts, cascade waves, and MoE routing arrive at the same positions / experts as the previous viewing — frame-identical per SPEC §10.1.
+
+**Export**
+1. From the thread detail page, click the **Export** outlined button in the header (next to Archive / Delete). The browser downloads `thread-{id}.json`.
+2. Open the file. Top-level fields: `schema_version`, `exported_at`, `thread`, `runs` (array, ordered by `sequence_in_thread`).
+3. Back on the thread page, on any terminal run row click the **JSON** pill next to Replay. The browser downloads `run-{id}.json`. Top-level fields: `schema_version`, `exported_at`, `thread`, `run` (single object, same shape as one entry in the thread export's `runs[]`).
+4. On the replay page header, the **Download JSON** button hits the same single-run endpoint.
+5. Verify the export shape contains no `user_id`, `model_id`, or `api_key_id` — exports are portable for future M11 sharing.
+6. Try a non-owner replay or export URL (sign in as a different user, paste the URL) — should return 403.
+
+### M9 retrospective
+
+What worked
+
+- **Reusing M8's playback engine via a `mode` option.** `useEventPlayback({ mode: 'replay', initialPlaying: false, initialCursor: 0 })` is the entire frontend-side adaptation. The hook keeps a single buffer model and a single set of controls; replay just changes the meaning of 1× (throttle vs head-sync) and the starting state. 5 new Vitest cases were enough to validate the replay path; the chunk-8 live-mode tests stayed green throughout.
+- **Token-log is the canonical replay source — no second persistence path.** `StreamRunJob` already writes `token_log` incrementally (M6 chunk 5a edit). M9 didn't have to touch the streaming pipeline at all. The synthesizer just walks that array and reuses `RunEventEmitter` for the MoE / layer events, which inherits the live pipeline's `(run.id, token_index)` hash for free.
+- **Strict frame-identity was cheap.** Chunk-2 worried that seeding every viz signal might be a slog; in practice it was ~50 lines (`lib/particleBurst.ts` + `ParticleSystem.spawnBurst` seed path + the VizPane events-watcher line). The hard work — the MoE/layer determinism — was already done back at M6. The remaining randomness in particle positions was the only loose end, and a pure `xorshift32` keyed on `payload.index` cleared it.
+- **Schema-version-from-day-one paid off conceptually.** Even though there's no v2 yet, the `schema_version: "1.0"` field in both export shapes documents the intent: consumers dispatch on it, version bumps are explicit. M11 sharing-link rendering can read this single field and refuse versions it doesn't understand.
+- **Shared `runSection` helper between single-run and thread exports.** Extracted in chunk 4 once both endpoints existed. Means a consumer that parses one export shape parses the other. Adding a future field (e.g., a vendor's attention tensor) lands in one place.
+
+What we learned
+
+- **Inertia view-finder caching pinned a Pest test failure.** Chunk-1's ReplayController tests failed with "Unable to locate file in Vite manifest" until the `Runs/Replay.tsx` file existed on disk — even though we're rendering through Inertia not directly through Vite. The PHP-side view layer requires the chunk to resolve from the manifest. Easy unblock once spotted; worth documenting because the error message points away from the real issue.
+- **Lazy-loaded components need `findByTestId`, not `getByTestId`.** Already learned at M8 chunk 7 with EmbeddingScene; M9 chunk 1's Replay page reused the same pattern.
+- **`Button asChild` with an anchor + `download` attr is the right Tailwind/shadcn idiom for download buttons.** Avoids fighting with `Link` (Inertia routing) for non-Inertia URLs. The same pattern landed in three places in chunk 5.
+
+Parked / carry-forward to M10
+
+- **M10 GIF export inherits the entire replay infrastructure.** The most natural implementation: spin up Puppeteer / Playwright, navigate to `/threads/{id}/runs/{id}/replay`, click Play at the desired speed, capture frames from the Viz canvas, encode via `ffmpeg`. The replay is already frame-identical and deterministic so the captured GIF will look the same on every render.
+- **Synthesizer can emit alternate event types if needed.** If M10 ever wants finer-grained intermediate events (e.g., "particle spawn at this t_ms" for sub-frame capture), the synthesizer is the place to add them — keeps the existing live + replay paths in sync.
+- **JSON import endpoint is deferred.** Per chunk-3 decision, no `POST /runs/import` exists yet. M11 sharing might want it (paste-a-link-to-import-a-run); the schema's stable enough that adding it is a `validate + create + write token_log` controller, ~50 lines.
+- **Real-browser smoke test is not automated.** Per chunk-6 decision, the manual recipe above is the verification path. Playwright/Cypress E2E lands in M11 Hardening (same call as M8).
 
 ---
 
