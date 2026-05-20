@@ -1,4 +1,5 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { KeyRound } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
@@ -207,10 +208,24 @@ export default function ApiKeysIndex({ apiKeys, supportedVendors }: Props) {
                                         <tr>
                                             <td
                                                 colSpan={5}
-                                                className="px-4 py-8 text-center text-muted-foreground"
+                                                className="px-4 py-10 text-center"
                                                 data-testid="empty-keys"
                                             >
-                                                No keys yet. Add one above to start submitting runs.
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <KeyRound
+                                                        className="h-8 w-8 text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    <div className="space-y-1">
+                                                        <p className="font-medium">
+                                                            No API keys yet
+                                                        </p>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Add one above to start submitting runs.
+                                                            Bring-your-own-key — we charge nothing.
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             </td>
                                         </tr>
                                     )}

@@ -567,10 +567,14 @@ function Transcript({
     if (runs.length === 0) {
         return (
             <Card className="border-dashed bg-card/40 text-center" data-testid="empty-transcript">
-                <CardContent className="py-10">
-                    <p className="text-sm text-muted-foreground">
-                        No prompts yet. Type your first one below to get started.
-                    </p>
+                <CardContent className="flex flex-col items-center gap-3 py-10">
+                    <ChevronDown className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                    <div className="space-y-1">
+                        <p className="font-medium">No prompts yet</p>
+                        <p className="text-sm text-muted-foreground">
+                            Type your first one in the input below to start the thread.
+                        </p>
+                    </div>
                 </CardContent>
             </Card>
         );
