@@ -147,6 +147,10 @@ class ThreadController extends Controller
                 'last_activity_at' => $thread->last_activity_at?->toIso8601String(),
                 'created_at' => $thread->created_at?->toIso8601String(),
                 'default_model_id' => $thread->default_model_id,
+                // M11 chunk 3: surface share state for the header
+                // popover. share_token is null when sharing is off.
+                'share_token' => $thread->share_token,
+                'share_enabled_at' => $thread->share_enabled_at?->toIso8601String(),
             ],
             'runs' => $runs,
             'usable_models' => $this->usableModels($request->user()),

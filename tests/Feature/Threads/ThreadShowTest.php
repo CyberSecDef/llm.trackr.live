@@ -60,6 +60,34 @@ describe('GET /threads/{thread} — render shape', function () {
         );
     });
 
+    it('includes share_token + share_enabled_at on the thread prop (M11 chunk 3)', function () {
+        $user = User::factory()->create();
+        $thread = Thread::factory()->for($user)->create([
+            'share_token' => str_repeat('a', 32),
+            'share_enabled_at' => now(),
+        ]);
+
+        $this->actingAs($user)->get("/threads/{$thread->id}")->assertInertia(
+            fn ($page) => $page
+                ->where('thread.share_token', str_repeat('a', 32))
+                ->where('thread.share_enabled_at', fn ($v) => is_string($v) && $v !== '')
+        );
+    });
+
+    it('share_token is null + share_enabled_at is null when sharing is off', function () {
+        $user = User::factory()->create();
+        $thread = Thread::factory()->for($user)->create([
+            'share_token' => null,
+            'share_enabled_at' => null,
+        ]);
+
+        $this->actingAs($user)->get("/threads/{$thread->id}")->assertInertia(
+            fn ($page) => $page
+                ->where('thread.share_token', null)
+                ->where('thread.share_enabled_at', null)
+        );
+    });
+
     it('returns runs ordered by sequence_in_thread', function () {
         $user = User::factory()->create();
         $thread = Thread::factory()->for($user)->create();

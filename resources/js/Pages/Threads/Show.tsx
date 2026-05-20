@@ -24,6 +24,7 @@ import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
+import ShareMenu from '@/Components/ShareMenu';
 import ModelMetadataCard from '@/Components/ModelMetadataCard';
 import ModelPicker, { type PickerModel } from '@/Components/ModelPicker';
 import ParameterControls, {
@@ -107,6 +108,9 @@ interface ThreadShowProps {
         last_activity_at: string | null;
         created_at: string | null;
         default_model_id: number | null;
+        // M11 chunk 3: share state for the header popover.
+        share_token: string | null;
+        share_enabled_at: string | null;
     };
     runs: RunRow[];
     usable_models: UsableModel[];
@@ -500,6 +504,13 @@ function ThreadHeader({ thread }: { thread: ThreadShowProps['thread'] }) {
                                 Export
                             </a>
                         </Button>
+                        {/* M11 chunk 3: share-toggle popover. */}
+                        <ShareMenu
+                            threadId={thread.id}
+                            shareToken={thread.share_token}
+                            shareEnabledAt={thread.share_enabled_at}
+                            origin={typeof window !== 'undefined' ? window.location.origin : ''}
+                        />
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button

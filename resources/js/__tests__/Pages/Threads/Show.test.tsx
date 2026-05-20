@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
     routerGet,
+    routerPost,
     routerPatch,
     routerDelete,
     routerReload,
@@ -14,6 +15,7 @@ const {
     mockStreamState,
 } = vi.hoisted(() => ({
     routerGet: vi.fn(),
+    routerPost: vi.fn(),
     routerPatch: vi.fn(),
     routerDelete: vi.fn(),
     routerReload: vi.fn(),
@@ -94,6 +96,7 @@ vi.mock('@inertiajs/react', async (importOriginal) => {
         },
         router: {
             get: routerGet,
+            post: routerPost,
             patch: routerPatch,
             delete: routerDelete,
             reload: routerReload,
@@ -122,6 +125,8 @@ const baseThread = {
     last_activity_at: null,
     created_at: '2026-05-18T00:00:00Z',
     default_model_id: null,
+    share_token: null,
+    share_enabled_at: null,
 };
 
 // Match PickerModel shape (M7 chunk 7 extended usable_models).
@@ -185,6 +190,7 @@ beforeEach(() => {
 
 afterEach(() => {
     routerGet.mockReset();
+    routerPost.mockReset();
     routerPatch.mockReset();
     routerDelete.mockReset();
     routerReload.mockReset();
@@ -305,6 +311,77 @@ describe('<ThreadShow /> — header', function () {
         await user.click(screen.getByTestId('delete-trigger'));
         await user.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(routerDelete).not.toHaveBeenCalled();
+    });
+
+    // ─── M11 chunk 3: Share toggle popover ──────────────────────────
+
+    it('renders a Share button in the header (off state)', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('share-menu-trigger')).toBeInTheDocument();
+        // Off state → no green indicator.
+        expect(screen.queryByTestId('share-menu-on-indicator')).not.toBeInTheDocument();
+    });
+
+    it('renders the ON indicator when share_token is present', function () {
+        render(
+            <ThreadShow
+                thread={{
+                    ...baseThread,
+                    share_token: 'a'.repeat(32),
+                    share_enabled_at: '2026-05-19T00:00:00Z',
+                }}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        expect(screen.getByTestId('share-menu-on-indicator')).toBeInTheDocument();
+    });
+
+    it('Enable button fires router.post to /threads/{id}/share', function () {
+        render(
+            <ThreadShow
+                thread={baseThread}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('share-menu-trigger'));
+        fireEvent.click(screen.getByTestId('share-menu-enable'));
+        expect(routerPost).toHaveBeenCalledWith(
+            `/threads/${baseThread.id}/share`,
+            {},
+            expect.objectContaining({ preserveScroll: true }),
+        );
+    });
+
+    it('Disable button fires router.delete to /threads/{id}/share', function () {
+        render(
+            <ThreadShow
+                thread={{
+                    ...baseThread,
+                    share_token: 'a'.repeat(32),
+                    share_enabled_at: '2026-05-19T00:00:00Z',
+                }}
+                runs={[]}
+                usable_models={oneModel}
+                has_api_keys={true}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('share-menu-trigger'));
+        fireEvent.click(screen.getByTestId('share-menu-disable'));
+        expect(routerDelete).toHaveBeenCalledWith(
+            `/threads/${baseThread.id}/share`,
+            expect.objectContaining({ preserveScroll: true }),
+        );
     });
 
     // ─── M9 chunk 5: thread Export button in header ─────────────────
