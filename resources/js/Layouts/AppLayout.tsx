@@ -6,6 +6,8 @@ import UserAvatar from '@/Components/UserAvatar';
 import RegistryStalenessBanner from '@/Components/RegistryStalenessBanner';
 import { Button } from '@/Components/ui/button';
 import { Separator } from '@/Components/ui/separator';
+import { Toaster } from '@/Components/ui/sonner';
+import { useFlashToast } from '@/hooks/useFlashToast';
 import {
     Sheet,
     SheetContent,
@@ -74,6 +76,10 @@ export default function AppLayout({ children, title }: Props) {
     const currentUrl = page.url;
     const { post: postLogout, processing: loggingOut } = useForm({});
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    // M12 chunk 6: translate Inertia flash statuses to Sonner toasts.
+    // Must run before the auth.user guard so the hook order stays
+    // stable across renders (react-hooks/rules-of-hooks).
+    useFlashToast();
 
     if (!auth.user) {
         // Render nothing — auth middleware should have already redirected.
@@ -145,6 +151,7 @@ export default function AppLayout({ children, title }: Props) {
                     {children}
                 </main>
             </div>
+            <Toaster />
         </div>
     );
 }

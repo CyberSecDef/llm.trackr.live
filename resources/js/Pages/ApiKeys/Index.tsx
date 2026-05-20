@@ -1,4 +1,4 @@
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, router, useForm } from '@inertiajs/react';
 import { KeyRound } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -16,8 +16,6 @@ import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
-import type { PageProps } from '@/types';
-
 interface ApiKeyRow {
     id: number;
     vendor: string;
@@ -34,7 +32,8 @@ interface Props {
 }
 
 export default function ApiKeysIndex({ apiKeys, supportedVendors }: Props) {
-    const { flash } = usePage<PageProps & { flash?: { status?: string } }>().props;
+    // M12 chunk 6: flash status is consumed by useFlashToast in
+    // AppLayout; no per-page wiring needed here anymore.
     const { data, setData, post, processing, errors, reset } = useForm({
         vendor: supportedVendors[0] ?? '',
         label: '',
@@ -75,22 +74,10 @@ export default function ApiKeysIndex({ apiKeys, supportedVendors }: Props) {
                         </p>
                     </header>
 
-                    {flash?.status === 'api-key-added' && (
-                        <div
-                            className="rounded-md border border-emerald-900/50 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200"
-                            data-testid="api-key-added"
-                        >
-                            Key added.
-                        </div>
-                    )}
-                    {flash?.status?.startsWith('api-key-deleted:') && (
-                        <div
-                            className="rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-200"
-                            data-testid="api-key-deleted"
-                        >
-                            Deleted {flash.status.replace('api-key-deleted:', '')} key.
-                        </div>
-                    )}
+                    {/* M12 chunk 6: api-key-added / api-key-deleted flash
+                        statuses now surface via Sonner toasts (see
+                        useFlashToast). The inline blocks were removed
+                        to avoid double-announce. */}
 
                     <Card>
                         <CardHeader>

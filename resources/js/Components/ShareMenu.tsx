@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/Components/ui/popover';
+import { toast } from '@/Components/ui/sonner';
 import { cn } from '@/lib/utils';
 
 /*
@@ -58,6 +59,9 @@ export default function ShareMenu({
                     // Inertia reloads thread props; share_token gets
                     // populated. Popover stays open so the URL pops
                     // into view.
+                    // M12 chunk 6: confirm the destructive-feeling
+                    // action with a non-intrusive toast.
+                    toast.success('Sharing enabled.');
                 },
             },
         );
@@ -66,6 +70,9 @@ export default function ShareMenu({
     const handleDisable = () => {
         router.delete(`/threads/${threadId}/share`, {
             preserveScroll: true,
+            onSuccess: () => {
+                toast.info('Sharing disabled. The previous link is now dead.');
+            },
         });
     };
 
@@ -75,6 +82,7 @@ export default function ShareMenu({
             await navigator.clipboard.writeText(shareUrl);
             setCopied(true);
             window.setTimeout(() => setCopied(false), 2000);
+            toast.success('Share URL copied to clipboard.');
         } catch {
             // navigator.clipboard might be unavailable in non-HTTPS
             // dev contexts. Fall back to a visible textarea so the

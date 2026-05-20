@@ -21,6 +21,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
+import VizSkeleton from '@/Components/VizSkeleton';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
@@ -336,13 +337,7 @@ function RightPane({
 
             {mode === 'viz' && (
                 <Suspense
-                    fallback={
-                        <Card data-testid="viz-loading">
-                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
-                                Loading visualization…
-                            </CardContent>
-                        </Card>
-                    }
+                    fallback={<VizSkeleton testId="viz-loading" label="Loading visualization" />}
                 >
                     <VizPane
                         events={events}
@@ -355,11 +350,10 @@ function RightPane({
             {mode === 'embeddings' && (
                 <Suspense
                     fallback={
-                        <Card data-testid="embeddings-loading">
-                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
-                                Loading embedding scatter…
-                            </CardContent>
-                        </Card>
+                        <VizSkeleton
+                            testId="embeddings-loading"
+                            label="Loading embedding scatter"
+                        />
                     }
                 >
                     <EmbeddingScene events={events} status={status} />

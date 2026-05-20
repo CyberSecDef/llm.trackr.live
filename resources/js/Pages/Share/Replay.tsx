@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import LogitsDistribution from '@/Components/LogitsDistribution';
+import VizSkeleton from '@/Components/VizSkeleton';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
 import { Button } from '@/Components/ui/button';
@@ -370,13 +371,7 @@ function ReplayRightPane({
 
             {mode === 'viz' && (
                 <Suspense
-                    fallback={
-                        <Card>
-                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
-                                Loading…
-                            </CardContent>
-                        </Card>
-                    }
+                    fallback={<VizSkeleton testId="viz-loading" label="Loading visualization" />}
                 >
                     <VizPane
                         events={events}
@@ -389,11 +384,10 @@ function ReplayRightPane({
             {mode === 'embeddings' && (
                 <Suspense
                     fallback={
-                        <Card>
-                            <CardContent className="p-6 text-center text-xs text-muted-foreground">
-                                Loading…
-                            </CardContent>
-                        </Card>
+                        <VizSkeleton
+                            testId="embeddings-loading"
+                            label="Loading embedding scatter"
+                        />
                     }
                 >
                     <EmbeddingScene events={events} status="streaming" />
