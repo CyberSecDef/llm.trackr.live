@@ -51,7 +51,7 @@ export default function PlaybackControls({
             <button
                 type="button"
                 onClick={onToggle}
-                className="rounded p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
+                className="rounded p-1 text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 aria-label={playing ? 'Pause playback' : 'Play playback'}
                 data-testid="playback-toggle"
                 data-playing={playing ? 'true' : 'false'}
@@ -66,7 +66,7 @@ export default function PlaybackControls({
             <button
                 type="button"
                 onClick={onStep}
-                className="rounded p-1 text-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded p-1 text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Step to next token"
                 title="Advance one token"
                 data-testid="playback-step"
@@ -87,7 +87,7 @@ export default function PlaybackControls({
                 <button
                     type="button"
                     onClick={onJumpToLive}
-                    className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     title="Jump to live"
                     data-testid="playback-cursor-jump"
                 >
@@ -112,6 +112,7 @@ export default function PlaybackControls({
                         aria-pressed={speed === s}
                         className={cn(
                             'px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                             i === 0 && 'rounded-l-[5px]',
                             i === PLAYBACK_SPEEDS.length - 1 && 'rounded-r-[5px]',
                             speed === s

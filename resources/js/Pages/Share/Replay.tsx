@@ -311,7 +311,11 @@ function ReplayRightPane({
 
     return (
         <div className="space-y-2">
-            <div className="flex rounded-md border border-border" role="tablist">
+            <div
+                className="flex rounded-md border border-border"
+                role="tablist"
+                aria-label="Right pane view"
+            >
                 <button
                     type="button"
                     role="tab"
@@ -320,6 +324,7 @@ function ReplayRightPane({
                     disabled={reducedMotion}
                     className={cn(
                         'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'viz'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -336,6 +341,7 @@ function ReplayRightPane({
                     onClick={() => setMode('embeddings')}
                     className={cn(
                         'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'embeddings'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -351,6 +357,7 @@ function ReplayRightPane({
                     onClick={() => setMode('debug')}
                     className={cn(
                         'flex-1 rounded-r-md px-3 py-1.5 text-xs transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         mode === 'debug'
                             ? 'bg-accent text-accent-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',

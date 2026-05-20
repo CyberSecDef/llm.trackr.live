@@ -172,16 +172,19 @@ export default function ThreadsIndex({ threads, filters, available_tags }: Threa
                         <div
                             className="flex rounded-md border border-border"
                             role="tablist"
+                            aria-label="Archive filter"
                             data-testid="archive-toggle"
                         >
                             {(['false', 'all', 'true'] as const).map((value) => (
                                 <button
                                     key={value}
+                                    type="button"
                                     role="tab"
                                     aria-selected={filters.archived === value}
                                     onClick={() => visitWithFilters({ archived: value })}
                                     className={cn(
                                         'px-3 py-2 text-xs first:rounded-l-md last:rounded-r-md transition-colors',
+                                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                                         filters.archived === value
                                             ? 'bg-accent text-accent-foreground'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
