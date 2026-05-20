@@ -6,6 +6,8 @@ use App\Http\Controllers\ApiKeysController;
 use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DebugRunController;
+use App\Http\Controllers\ExportDownloadController;
+use App\Http\Controllers\ExportTriggerController;
 use App\Http\Controllers\PromptPreviewController;
 use App\Http\Controllers\ReplayController;
 use App\Http\Controllers\RunController;
@@ -140,6 +142,16 @@ Route::middleware('auth')->group(function () {
     // `runs: []` array instead of a `run: {}` object.
     Route::get('threads/{thread}/export.json', [ThreadExportController::class, 'show'])
         ->name('threads.export');
+
+    // GIF/MP4 export trigger + download (M10 chunk 5). Owner-only.
+    // POST /runs/{id}/export — cache hit returns URLs immediately;
+    // cache miss dispatches ExportRunGif and 202s. The frontend
+    // waits for ExportCompleted on private-runs.{id}.
+    Route::post('runs/{run}/export', [ExportTriggerController::class, 'store'])
+        ->name('runs.export.trigger');
+    Route::get('runs/{run}/exports/{format}', [ExportDownloadController::class, 'show'])
+        ->where('format', 'gif|mp4')
+        ->name('runs.exports.show');
 
     // Admin-only routes.
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {

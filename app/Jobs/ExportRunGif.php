@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Events\Runs\ExportCompleted;
+use App\Events\Runs\ExportFailed;
 use App\Models\Run;
 use App\Services\Exports\ExportStorage;
 use App\Services\Exports\GifRenderer;
@@ -12,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Queued export of a Run's animation as GIF + MP4 (M10 chunk 1).
@@ -49,17 +52,6 @@ class ExportRunGif implements ShouldQueue
 
     public function handle(GifRenderer $renderer, ExportStorage $storage): void
     {
-        // Cache short-circuit. The SPEC says cache hits skip the
-        // render entirely; chunks 2 + 4 honor this by checking
-        // here rather than inside each concrete renderer.
-        if ($storage->bothExist($this->runId)) {
-            Log::info('ExportRunGif: cache hit, skipping render', [
-                'run_id' => $this->runId,
-            ]);
-
-            return;
-        }
-
         /** @var Run|null $run */
         $run = Run::query()->find($this->runId);
         if ($run === null) {
@@ -70,11 +62,48 @@ class ExportRunGif implements ShouldQueue
             return;
         }
 
+        // Cache short-circuit. The SPEC says cache hits skip the
+        // render entirely; chunks 2 + 4 honor this by checking
+        // here rather than inside each concrete renderer. M10
+        // chunk 5: even on cache hit we still broadcast
+        // ExportCompleted so any frontend tab subscribed to the
+        // run's channel flips its chooser state.
+        if ($storage->bothExist($this->runId)) {
+            Log::info('ExportRunGif: cache hit, skipping render', [
+                'run_id' => $this->runId,
+            ]);
+            event(new ExportCompleted(
+                run: $run,
+                gifUrl: route('runs.exports.show', ['run' => $run->id, 'format' => 'gif']),
+                mp4Url: route('runs.exports.show', ['run' => $run->id, 'format' => 'mp4']),
+                framesCount: 0,
+                durationMs: 0,
+            ));
+
+            return;
+        }
+
         $config = new RenderConfig(
             frameRate: (int) config('gif_export.frame_rate', 30),
             maxDurationMs: (int) config('gif_export.max_duration_ms', 300_000),
         );
 
-        $renderer->render($run, $config);
+        try {
+            $result = $renderer->render($run, $config);
+
+            event(new ExportCompleted(
+                run: $run,
+                gifUrl: route('runs.exports.show', ['run' => $run->id, 'format' => 'gif']),
+                mp4Url: route('runs.exports.show', ['run' => $run->id, 'format' => 'mp4']),
+                framesCount: $result->framesCount,
+                durationMs: $result->durationMs,
+            ));
+        } catch (Throwable $e) {
+            // Broadcast before re-throwing so the frontend sees a
+            // clean "render failed" state. The throw still lands the
+            // job in failed_jobs for operator inspection.
+            event(new ExportFailed(run: $run, message: $e->getMessage()));
+            throw $e;
+        }
     }
 }

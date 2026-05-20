@@ -1,5 +1,7 @@
 <?php
 
+use App\Events\Runs\ExportCompleted;
+use App\Events\Runs\ExportFailed;
 use App\Jobs\ExportRunGif;
 use App\Models\Run;
 use App\Services\Exports\GifRenderer;
@@ -7,6 +9,7 @@ use App\Services\Exports\RenderConfig;
 use App\Services\Exports\RenderResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -37,6 +40,14 @@ class FakeRenderer implements GifRenderer
 beforeEach(function () {
     Storage::fake('local');
     config()->set('gif_export.storage_disk', 'local');
+    // M10 chunk 5: the job now dispatches ExportCompleted/ExportFailed
+    // (ShouldBroadcastNow). Fake both globally so existing tests
+    // don't try to hit Pusher. Per-test cases that ASSERT the events
+    // re-fake inside the test body.
+    Event::fake([
+        ExportCompleted::class,
+        ExportFailed::class,
+    ]);
 });
 
 describe('ExportRunGif dispatch', function () {
@@ -44,6 +55,64 @@ describe('ExportRunGif dispatch', function () {
         Bus::fake();
         ExportRunGif::dispatch(42);
         Bus::assertDispatched(ExportRunGif::class, fn ($job) => $job->runId === 42);
+    });
+});
+
+describe('ExportRunGif event dispatch (M10 chunk 5)', function () {
+    it('dispatches ExportCompleted on a successful render', function () {
+        $run = Run::factory()->create();
+        $fake = new FakeRenderer;
+        $this->app->instance(GifRenderer::class, $fake);
+        Event::fake([ExportCompleted::class]);
+
+        ExportRunGif::dispatchSync($run->id);
+
+        Event::assertDispatched(
+            ExportCompleted::class,
+            fn ($e) => $e->run->id === $run->id,
+        );
+    });
+
+    it('dispatches ExportCompleted on a cache hit (no renderer call)', function () {
+        $run = Run::factory()->create();
+        Storage::disk('local')->put("exports/{$run->id}.gif", 'G');
+        Storage::disk('local')->put("exports/{$run->id}.mp4", 'M');
+
+        $fake = new FakeRenderer;
+        $this->app->instance(GifRenderer::class, $fake);
+        Event::fake([ExportCompleted::class]);
+
+        ExportRunGif::dispatchSync($run->id);
+
+        expect($fake->calls)->toBeEmpty();
+        Event::assertDispatched(
+            ExportCompleted::class,
+        );
+    });
+
+    it('dispatches ExportFailed (then rethrows) when the renderer throws', function () {
+        $run = Run::factory()->create();
+        $throwing = new class implements GifRenderer
+        {
+            public function render(Run $run, RenderConfig $config): RenderResult
+            {
+                throw new RuntimeException('renderer crashed');
+            }
+        };
+        $this->app->instance(GifRenderer::class, $throwing);
+        Event::fake([ExportFailed::class]);
+
+        try {
+            ExportRunGif::dispatchSync($run->id);
+            expect()->fail('expected rethrow');
+        } catch (RuntimeException $e) {
+            expect($e->getMessage())->toBe('renderer crashed');
+        }
+
+        Event::assertDispatched(
+            ExportFailed::class,
+            fn ($e) => $e->run->id === $run->id && $e->message === 'renderer crashed',
+        );
     });
 });
 
