@@ -1,0 +1,39 @@
+<?php
+
+namespace App\Services\Exports;
+
+/**
+ * Picks the active renderer per the `gif_export.renderer` config.
+ *
+ * Selection table:
+ *   'svg'        → SvgRenderer (chunk 2 — currently falls back to
+ *                  NullRenderer; not implemented yet).
+ *   'puppeteer'  → PuppeteerRenderer (chunk 4 — same fallback).
+ *   anything else → NullRenderer.
+ *
+ * The factory itself is bound in `AppServiceProvider` as the
+ * concrete resolver for the `GifRenderer` interface — that way
+ * the `ExportRunGif` job and any other consumer can ask for the
+ * interface and get the right implementation per config + env.
+ *
+ * Tests swap with `app()->instance(GifRenderer::class, $fake)`
+ * which bypasses the factory entirely — see chunk 6's fallback
+ * path test for the pattern.
+ */
+class GifRendererFactory
+{
+    public function make(?string $driver = null): GifRenderer
+    {
+        $driver ??= (string) config('gif_export.renderer', 'null');
+
+        return match ($driver) {
+            // Real renderers will replace the NullRenderer fallback
+            // when chunks 2 and 4 land. For now both `svg` and
+            // `puppeteer` resolve to Null so misconfigurations don't
+            // silently produce empty files.
+            'svg' => new NullRenderer,
+            'puppeteer' => new NullRenderer,
+            default => new NullRenderer,
+        };
+    }
+}

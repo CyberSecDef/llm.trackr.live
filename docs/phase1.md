@@ -24,7 +24,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
-| M10 | GIF Export | M8 | 6 days | ⚪ Not started | |
+| M10 | GIF Export | M8 | 6 days | 🟡 In progress (chunk 1 done) | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
 | M13 | Deployment | M12 | 5 days | ⚪ Not started | |
@@ -552,7 +552,7 @@ Parked / carry-forward to M10
 **Purpose:** Completed runs can be downloaded as animated GIFs.
 
 **Tasks**
-- [ ] Job: `ExportRunGif` (queued).
+- [x] Job: `ExportRunGif` (queued) — chunk 1 landed the foundation skeleton. `app/Jobs/ExportRunGif.php` is a `ShouldQueue` job constructed with a `$runId` (kept primitive so the queue payload stays small + survives DB refreshes between dispatch and worker). `handle(GifRenderer, ExportStorage)` cache-hits early when both export files exist, fetches the Run, and calls the renderer with a `RenderConfig` built from `config('gif_export.frame_rate')` + `max_duration_ms`. Single try / 5-minute timeout matches the SPEC. The supporting cast also landed: `RenderConfig` (immutable, 30 FPS / 5-min default with `withFrameRate` / `withMaxDurationMs` builders), `RenderResult` (gif/mp4 paths + framesCount + durationMs surface fields), `GifRenderer` interface (chunks 2 + 4 implement), `NullRenderer` placeholder that logs + throws so misconfigurations land in failed_jobs, `GifRendererFactory` (driver dispatch on `gif_export.renderer` config), `ExportStorage` paths + cache helpers (`hasGif/hasMp4/bothExist`, treats partial renders as cache miss). Service binding in `AppServiceProvider` lets the job type-hint the `GifRenderer` interface and get the configured implementation via the factory. 23 Pest tests across the 4 new test files.
 - [ ] **SVG renderer** (default `GIF_RENDERER=svg`):
   - PHP iterates `token_log`; per frame generates an SVG of the 2D panels (token stream + attention + logits + MoE).
   - Imagick rasterizes to PNG sequence.
@@ -566,6 +566,14 @@ Parked / carry-forward to M10
 - [ ] Results stored at `storage/app/exports/{run_id}.gif` and `storage/app/exports/{run_id}.mp4`.
 - [ ] WebSocket completion event surfaces both download URLs; download UI offers a chooser.
 - [ ] Renderer fallback: if `puppeteer` configured but Chromium unavailable at boot, log warning and fall back to SVG with a "fallback engaged" badge.
+
+**Decisions (chunk 1):**
+- **Skeleton-only scope for chunk 1.** User choice. No real rendering yet — both `svg` and `puppeteer` driver values currently resolve to `NullRenderer` which throws on `render()`. Trade-off: an export job dispatched today fails fast with a clear message. Benefit: the pipeline (job + renderer interface + storage + cache short-circuit + DI binding) is testable + reviewable before any pixel work lands. Chunks 2 (SVG) and 4 (Puppeteer) swap the resolution in `GifRendererFactory::make()` without touching the job, the storage helper, the config, or the binding.
+- **Cache: return existing file if present.** User choice. `ExportStorage::bothExist(runId)` short-circuits the job when both `.gif` and `.mp4` are on disk. Repeated downloads cost a single filesystem stat; the renderer + ffmpeg cost is avoided. Partial renders (one file present, the other missing) are treated as a cache miss so the next dispatch re-renders cleanly — covers the "ffmpeg died mid-encode" edge case.
+- **30 FPS default.** User choice. Matches the M8 animation target + the manual recipe steps. Configurable via `GIF_FRAME_RATE` env so per-deployment tuning stays out of code. The `RenderConfig` value object exposes `maxFrames()` for renderers that need a hard frame-count cap (frame_rate × max_duration_ms / 1000).
+- **Run ID, not Run model, in the job constructor.** Keeps the queue payload tiny (`['runId' => 42]`) and skips any SerializesModels stale-data concern between dispatch + worker. The worker re-fetches via `Run::find($this->runId)` and exits silently if the row vanished (delete-after-dispatch is the only realistic case).
+- **`GifRenderer` interface, not abstract class.** Two implementations land in different chunks (chunks 2 + 4) with very different shapes (PHP+Imagick vs Node+ffmpeg). The interface is the minimum shared API — `render(Run, RenderConfig): RenderResult`. Container binding via `AppServiceProvider` resolves the configured concrete; tests use `app()->instance(GifRenderer::class, $fake)` to swap.
+- **Single `tries=1` + `failed_jobs` over retries.** A failed render is operator-actionable (Chromium missing, ffmpeg path wrong, run.token_log corrupted), not transient. Retry-blasting wastes CPU. The 5-minute timeout (matches SPEC) is the wall-clock guard; failures land in `failed_jobs` for inspection.
 
 **Exit criteria**
 - Default install (SVG renderer) produces both GIF and MP4 for a 100-token run in < 30 seconds.

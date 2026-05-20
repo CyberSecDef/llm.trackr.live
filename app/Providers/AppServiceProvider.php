@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Exports\GifRenderer;
+use App\Services\Exports\GifRendererFactory;
 use App\Services\Llm\Clients\AnthropicClient;
 use App\Services\Llm\Clients\GoogleGeminiClient;
 use App\Services\Llm\Clients\GroqClient;
@@ -37,6 +39,18 @@ class AppServiceProvider extends ServiceProvider
 
         // Convenience singleton so callers can just type-hint the factory.
         $this->app->singleton(TokenCounterFactory::class);
+
+        // M10 chunk 1: GIF/MP4 renderer binding. Consumers (the
+        // ExportRunGif job, test code) type-hint the interface and
+        // get the active concrete per `gif_export.renderer` config.
+        // Tests can override via `app()->instance(GifRenderer::class, $fake)`
+        // — used by the chunk-6 fallback path test and any future
+        // job-level integration coverage.
+        $this->app->singleton(GifRendererFactory::class);
+        $this->app->bind(
+            GifRenderer::class,
+            fn ($app) => $app->make(GifRendererFactory::class)->make(),
+        );
     }
 
     public function boot(): void
