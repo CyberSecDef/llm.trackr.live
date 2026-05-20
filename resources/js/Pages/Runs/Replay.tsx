@@ -1,7 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Download, Radio } from 'lucide-react';
+import { ArrowLeft, Radio } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
+import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
@@ -132,13 +133,11 @@ function ReplayHeader({
                         Back to thread
                     </Link>
                 </Button>
-                {/* M9 chunk 5: per-run JSON download. */}
-                <Button asChild variant="outline" size="sm" data-testid="replay-download">
-                    <a href={`/runs/${run.id}/export.json`} download={`run-${run.id}.json`}>
-                        <Download className="mr-1 h-3 w-3" aria-hidden="true" />
-                        Download JSON
-                    </a>
-                </Button>
+                {/* M10 chunk 5: chooser dropdown (JSON / GIF / MP4)
+                    replaces the M9 single-format download button. */}
+                <div data-testid="replay-download">
+                    <ExportDownloadMenu runId={run.id} jsonHref={`/runs/${run.id}/export.json`} />
+                </div>
             </div>
             <div className="flex items-baseline gap-3 flex-wrap">
                 <h1 className="text-xl font-bold tracking-tight">

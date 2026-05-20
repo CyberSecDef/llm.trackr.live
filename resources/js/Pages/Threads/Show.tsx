@@ -20,6 +20,7 @@ import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
+import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
@@ -588,20 +589,18 @@ function Transcript({
                                             Replay
                                         </Link>
                                     )}
-                                    {/* M9 chunk 5: per-run JSON download.
-                                        Same terminal-only gating as Replay
-                                        per the chunk-5 decision. */}
+                                    {/* M10 chunk 5: chooser dropdown
+                                        (JSON / GIF / MP4) replaces the
+                                        chunk-5 M9 JSON-only pill. Same
+                                        terminal-only gating. */}
                                     {(run.status === 'complete' || run.status === 'error') && (
-                                        <a
-                                            href={`/runs/${run.id}/export.json`}
-                                            download={`run-${run.id}.json`}
-                                            className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                                            data-testid={`download-link-${run.id}`}
-                                            aria-label={`Download run ${run.sequence_in_thread} as JSON`}
-                                        >
-                                            <Download className="h-3 w-3" aria-hidden="true" />
-                                            JSON
-                                        </a>
+                                        <div data-testid={`download-link-${run.id}`}>
+                                            <ExportDownloadMenu
+                                                runId={run.id}
+                                                jsonHref={`/runs/${run.id}/export.json`}
+                                                size="pill"
+                                            />
+                                        </div>
                                     )}
                                     <span
                                         className={cn(

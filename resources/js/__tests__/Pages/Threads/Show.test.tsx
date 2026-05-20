@@ -830,7 +830,7 @@ describe('<ThreadShow /> — transcript', function () {
 
     // ─── M9 chunk 5: Download links + thread Export button ─────────
 
-    it('shows a JSON Download link on terminal runs pointing at /runs/{id}/export.json', function () {
+    it('shows the export download menu on terminal runs (M10 chunk 5)', function () {
         render(
             <ThreadShow
                 thread={baseThread}
@@ -839,10 +839,11 @@ describe('<ThreadShow /> — transcript', function () {
                 has_api_keys={true}
             />,
         );
-        const link = screen.getByTestId(`download-link-${sampleRun.id}`);
-        expect(link).toBeInTheDocument();
-        expect(link.getAttribute('href')).toBe(`/runs/${sampleRun.id}/export.json`);
-        expect(link.getAttribute('download')).toBe(`run-${sampleRun.id}.json`);
+        // The wrapper testid stayed stable; the chooser button
+        // (export-menu-trigger) replaced the M9-era single anchor.
+        const wrap = screen.getByTestId(`download-link-${sampleRun.id}`);
+        const trigger = wrap.querySelector('[data-testid="export-menu-trigger"]');
+        expect(trigger).not.toBeNull();
     });
 
     it('does NOT show a Download link on streaming runs', function () {

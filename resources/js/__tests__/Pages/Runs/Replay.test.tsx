@@ -184,12 +184,14 @@ describe('<Replay />', () => {
         expect(back?.getAttribute('href')).toBe('/threads/1');
     });
 
-    it('M9 chunk 5: header has a Download JSON button pointing at /runs/{id}/export.json', () => {
+    it('M10 chunk 5: header renders the export download menu (JSON / GIF / MP4)', () => {
         render(<Replay thread={thread} run={baseRun} events={events} model={baseModel} />);
-        const dlButton = screen.getByTestId('replay-download');
-        const anchor = dlButton.tagName === 'A' ? dlButton : dlButton.querySelector('a');
-        expect(anchor).not.toBeNull();
-        expect(anchor!.getAttribute('href')).toBe(`/runs/${baseRun.id}/export.json`);
-        expect(anchor!.getAttribute('download')).toBe(`run-${baseRun.id}.json`);
+        // The wrapper still exists under the same testid; the
+        // chooser trigger button replaces the chunk-5 M9 single-
+        // format anchor.
+        const wrap = screen.getByTestId('replay-download');
+        expect(wrap).toBeInTheDocument();
+        const trigger = wrap.querySelector('[data-testid="export-menu-trigger"]');
+        expect(trigger).not.toBeNull();
     });
 });
