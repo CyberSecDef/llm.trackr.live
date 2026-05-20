@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { max } from 'd3-array';
 import { scaleLinear } from 'd3-scale';
+import { VIRIDIS_DOMAIN, VIRIDIS_STOPS } from '@/lib/palettes';
 
 /*
  * AttentionHeatmap (M8 chunk 5a) — N×N SVG grid colored by weight.
@@ -10,9 +11,12 @@ import { scaleLinear } from 'd3-scale';
  * component stays a pure presenter — no synthesis logic here, no
  * coupling to the event stream.
  *
- * Color scale: linear from slate-950 (`#020617`) → cyan-300
- * (`#67e8f9`) — the same accent color the chunk-3 particles use,
- * which keeps the palette coherent across viz components.
+ * Color scale: viridis (M12 chunk 4) — 5-stop perceptually-uniform
+ * sequential palette, CB-safe under deuteranopia / protanopia /
+ * tritanopia. Picked over the M8 ad-hoc slate→cyan ramp because
+ * viridis preserves perceptual ordering for color-blind users
+ * AND non-CB users get a much more readable distribution (the
+ * old single-hue ramp compressed the top tail into a single cyan).
  *
  * SVG was chosen over Canvas because the matrices we render are
  * capped at ~32×32 in the overlay (the caller slices the tail of
@@ -29,9 +33,6 @@ interface AttentionHeatmapProps {
     caption?: string;
 }
 
-const COLOR_LOW = '#020617'; // slate-950
-const COLOR_HIGH = '#67e8f9'; // cyan-300
-
 export default function AttentionHeatmap({ matrix, size = 220, caption }: AttentionHeatmapProps) {
     const n = matrix.length;
     const colorScale = useMemo(() => {
@@ -39,10 +40,12 @@ export default function AttentionHeatmap({ matrix, size = 220, caption }: Attent
         const m = max(flat) ?? 1;
         // Domain max defaults to 1.0 for tiny matrices where the
         // largest cell is < 1; using the real max would over-
-        // saturate trivial inputs.
+        // saturate trivial inputs. The 5-stop viridis range is
+        // mapped across [0, max] via d3 multi-stop interpolation.
+        const maxVal = Math.max(m, 1e-6);
         return scaleLinear<string>()
-            .domain([0, Math.max(m, 1e-6)])
-            .range([COLOR_LOW, COLOR_HIGH])
+            .domain(VIRIDIS_DOMAIN.map((d) => d * maxVal))
+            .range([...VIRIDIS_STOPS])
             .clamp(true);
     }, [matrix]);
 
@@ -60,7 +63,7 @@ export default function AttentionHeatmap({ matrix, size = 220, caption }: Attent
                 width={size}
                 height={size}
                 role="img"
-                aria-label="Attention heatmap (illustrative)"
+                aria-label="Attention heatmap (illustrative, viridis palette)"
                 data-testid="attention-heatmap"
                 className="rounded-sm border border-border bg-slate-950"
             >

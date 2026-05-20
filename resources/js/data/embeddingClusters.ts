@@ -38,13 +38,15 @@ export interface EmbeddingPoint {
 export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     {
         name: 'whitespace',
-        color: '#94a3b8', // slate-400
+        // M12 chunk 4: Okabe-Ito palette index 0 (orange). See
+        // resources/js/lib/palettes.ts for the rationale.
+        color: '#e69f00', // okabe-ito orange
         center: [-2.5, 0, 0],
         tokens: [' ', '\n', '\t', ' \n', '  ', '\n\n', ' \t', '   ', '    ', '\r\n', ' '],
     },
     {
         name: 'punctuation',
-        color: '#f97316', // orange-500
+        color: '#56b4e9', // okabe-ito sky blue
         center: [-1.5, 1.8, 0.5],
         tokens: [
             '.',
@@ -75,7 +77,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'pronouns',
-        color: '#e879f9', // fuchsia-400
+        color: '#009e73', // okabe-ito bluish green
         center: [-1, -1.5, 1.5],
         tokens: [
             'I',
@@ -105,7 +107,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'common-english',
-        color: '#67e8f9', // cyan-300
+        color: '#f0e442', // okabe-ito yellow
         center: [0, 0, 0],
         tokens: [
             'the',
@@ -166,7 +168,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'long-words',
-        color: '#a5f3fc', // cyan-200
+        color: '#0072b2', // okabe-ito blue
         center: [0.5, -2, -1],
         tokens: [
             'people',
@@ -206,7 +208,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'numbers',
-        color: '#34d399', // emerald-400
+        color: '#d55e00', // okabe-ito vermillion
         center: [2.2, -1.5, 0.5],
         tokens: [
             '0',
@@ -243,7 +245,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'code-keywords',
-        color: '#fbbf24', // amber-400
+        color: '#cc79a7', // okabe-ito reddish purple
         center: [1.5, 2, -1.5],
         tokens: [
             'def',
@@ -290,7 +292,7 @@ export const EMBEDDING_CLUSTERS: EmbeddingCluster[] = [
     },
     {
         name: 'code-symbols',
-        color: '#fde68a', // amber-200
+        color: '#ffffff', // okabe-ito neutral (replaces #000000 — see palettes.ts)
         center: [1, 2, 1.5],
         tokens: [
             '{',
