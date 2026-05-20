@@ -17,6 +17,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StreamRunController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ThreadExportController;
+use App\Http\Controllers\ThreadShareController;
 use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -142,6 +143,15 @@ Route::middleware('auth')->group(function () {
     // `runs: []` array instead of a `run: {}` object.
     Route::get('threads/{thread}/export.json', [ThreadExportController::class, 'show'])
         ->name('threads.export');
+
+    // Public-share toggle (M11 chunk 1). Owner-only. POST enables
+    // sharing (always with a fresh token per the chunk-1 decision);
+    // DELETE disables. The public /share/{token} reader route lands
+    // in chunk 2.
+    Route::post('threads/{thread}/share', [ThreadShareController::class, 'store'])
+        ->name('threads.share.store');
+    Route::delete('threads/{thread}/share', [ThreadShareController::class, 'destroy'])
+        ->name('threads.share.destroy');
 
     // GIF/MP4 export trigger + download (M10 chunk 5). Owner-only.
     // POST /runs/{id}/export — cache hit returns URLs immediately;
