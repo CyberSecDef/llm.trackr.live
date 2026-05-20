@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
+use App\Services\Exports\FfmpegEncoder;
 use App\Services\Exports\FrameRenderer;
 use App\Services\Exports\GifRenderer;
 use App\Services\Exports\GifRendererFactory;
-use App\Services\Exports\NullVideoEncoder;
 use App\Services\Exports\SvgFrameRenderer;
 use App\Services\Exports\VideoEncoder;
 use App\Services\Llm\Clients\AnthropicClient;
@@ -57,12 +57,15 @@ class AppServiceProvider extends ServiceProvider
         );
 
         // M10 chunk 2: FrameRenderer + VideoEncoder default bindings.
-        // SvgRenderer asks for these via DI; chunk 3 swaps the
-        // encoder for FfmpegEncoder; chunk 4 adds a Puppeteer
+        // SvgRenderer asks for these via DI; chunk 4 adds a Puppeteer
         // FrameRenderer; chunk 6's fallback swaps based on Chromium
         // availability at boot.
         $this->app->bind(FrameRenderer::class, SvgFrameRenderer::class);
-        $this->app->bind(VideoEncoder::class, NullVideoEncoder::class);
+        // M10 chunk 3: FfmpegEncoder is now the default; the
+        // chunk-2 NullVideoEncoder stays in the codebase as the
+        // operator-error fallback (chunk 6 will use it when ffmpeg
+        // isn't on PATH).
+        $this->app->bind(VideoEncoder::class, FfmpegEncoder::class);
     }
 
     public function boot(): void

@@ -24,7 +24,7 @@ This document breaks Phase 1 into 14 milestones (M1–M14). Each milestone lists
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
 | M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
-| M10 | GIF Export | M8 | 6 days | 🟡 In progress (chunks 1–2 done) | |
+| M10 | GIF Export | M8 | 6 days | 🟡 In progress (chunks 1–3 done) | |
 | M11 | Thread Sharing | M9 | 3 days | ⚪ Not started | |
 | M12 | Accessibility + Polish | M11 | 5 days | ⚪ Not started | |
 | M13 | Deployment | M12 | 5 days | ⚪ Not started | |
@@ -558,7 +558,7 @@ Parked / carry-forward to M10
   - Spawn-per-export Node child process: launches at job start, runs headless Chromium, navigates to `/runs/{id}/render?record=1`, captures canvas frames, exits.
   - No supervisor entry — process lifetime equals job lifetime. Cold-start ~3 s; zero idle RAM cost.
   - `/runs/{id}/render` route on Laravel side: loads run, autoplays viz in record mode (deterministic, no live streaming).
-- [ ] ffmpeg shell-out: PNG sequence → animated GIF **and** MP4 (H.264). Both formats always produced from the same frame sequence.
+- [x] ffmpeg shell-out: PNG sequence → animated GIF **and** MP4 (H.264). Both formats produced from the same frame sequence (chunk 3). `FfmpegEncoder` (`app/Services/Exports/FfmpegEncoder.php`) implements `VideoEncoder`. Three ffmpeg invocations per export, per chunk-3 decision: (1) PNG sequence → MP4 with `libx264 / yuv420p / +faststart / scale=trunc(iw/2)*2:trunc(ih/2)*2` for web-compat + even-dimension x264 requirement; (2) PNG sequence → palette via `palettegen=stats_mode=full` for the chunk-3 "palette-optimized GIF" decision; (3) PNG sequence + palette → GIF via `paletteuse=dither=bayer:bayer_scale=3 -loop 0` for clean dithering on slate gradients + infinite playback in Slack/Discord. Atomicity by ordering: storage writes happen only after all three passes succeed; a mid-pipeline failure leaves the disk untouched + the next dispatch is a clean cache miss. `AppServiceProvider` binds `VideoEncoder` → `FfmpegEncoder` by default (chunk-2's `NullVideoEncoder` stays in the codebase as the operator-error fallback chunk 6 will use). 10 Pest tests on the encoder (3 invocations, libx264/palettegen/paletteuse flags, frame_rate plumbing, storage writes, atomicity on each-pass failure, missing-output-file guard, error message has pass name + exit code).
 - [ ] Per-export timeout: 5 minutes.
 - [ ] Results stored at `storage/app/exports/{run_id}.gif` and `storage/app/exports/{run_id}.mp4`.
 - [ ] WebSocket completion event surfaces both download URLs; download UI offers a chooser.
@@ -578,6 +578,11 @@ Parked / carry-forward to M10
 - **`Process::run` with a string command + `escapeshellarg`, not the array form.** (chunk 2) Laravel's `Process::fake` matches patterns against the command string. Passing an array makes `$process->command` an array at assertion time, which broke `Process::assertRanTimes` closures with type errors during dev. String form + escapeshellarg is the simpler + more testable path.
 - **Tmp dir cleanup in a `try { … } finally { cleanup() }`.** (chunk 2) Encoder failures (chunk 3 ffmpeg crash, malformed PNG) must not leak the scratch dir. Test explicitly verifies cleanup on both success + throw paths.
 - **`GifRendererFactory` takes a Container in its constructor.** (chunk 2) Resolves `SvgRenderer` via `$container->make()` so its `FrameRenderer` + `VideoEncoder` + `ExportStorage` dependencies get auto-wired. The factory becomes a thin driver-name → service-resolution dispatcher; future drivers add a single match arm.
+- **Three separate ffmpeg invocations, not a single `-map` graph.** (chunk 3) User choice. Each pass has a clear concern (MP4, palette, GIF) and a clean failure surface — the exception message names which pass failed + the ffmpeg stderr. A `-map` multi-output graph would shave ~1 second per export but every filter-chain change has to consider both output streams together, and ffmpeg version differences in the multi-output path are a real maintenance hazard. Two separate processes is the operational hygiene choice.
+- **Palette-optimized GIF (two-pass) over single-pass default.** (chunk 3) User choice. `palettegen stats_mode=full` reads every pixel of every frame to build the optimal 256-color palette, then `paletteuse` re-encodes with `dither=bayer:bayer_scale=3`. ~2-3× slower than ffmpeg's default GIF path; the output looks dramatically better on the slate-dark backgrounds + cyan particle streaks we have to render. Single-pass would visibly band the gradients.
+- **Atomicity by ordering: storage writes after every pass succeeds.** (chunk 3) The encoder writes to the configured storage disk (`gif_export.storage_disk`) only after all three ffmpeg invocations have succeeded AND both tmp files exist on disk. A pass-1 failure leaves the storage untouched; a pass-2/3 failure also leaves it untouched (we don't write the MP4 until both the MP4 + GIF tmp files exist). `ExportStorage::bothExist()` then drives a clean cache-miss on the next dispatch — no half-baked artifacts get served from storage.
+- **`file_get_contents` then `Storage::put` (full file in memory).** (chunk 3) The artifact size class is ~5–50MB per file; PHP memory handles this easily. Streaming chunks would be more memory-friendly but adds complexity; if exports ever grow past a few hundred MB the swap-in point is single-method.
+- **`-y` flag everywhere for overwrite-on-collision.** (chunk 3) The tmp dir is fresh per export (chunk 2's `try { … } finally` cleanup) so collisions shouldn't happen, but a flaky cleanup + immediate re-dispatch could leave a stale `output.mp4`. `-y` makes ffmpeg overwrite silently rather than prompt-and-hang in stdin.
 
 **Exit criteria**
 - Default install (SVG renderer) produces both GIF and MP4 for a 100-token run in < 30 seconds.
