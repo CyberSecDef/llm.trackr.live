@@ -115,7 +115,27 @@ export interface PipelineState {
     tokens?: readonly BpeToken[];
     /** Final context length, in tokens (Scene 4 output). */
     contextLength?: number;
+    /** Per-token embedding vectors (Scene 5 output). Each inner
+     *  array is the synthesized embedding for the matching token.
+     *  Real dim is `model.hidden_dim` (e.g. 4096); we synthesize
+     *  the first VISIBLE_EMBEDDING_DIM cells (128 by default) for
+     *  rendering. The full dim is communicated via the matrix
+     *  caption + aria-label. */
+    embeddings?: readonly (readonly number[])[];
+    /** Embeddings after positional encoding (Scene 6 output). */
+    positionEncoded?: readonly (readonly number[])[];
+    /** Layer-normalized vectors (Scene 7 output). Subsequent
+     *  per-layer scenes (chunks 5-7) overwrite this. */
+    layerNormed?: readonly (readonly number[])[];
 }
+
+/**
+ * Cell count we actually render for vector strips. The real
+ * hidden_dim is much larger (4096 typical, up to 16384 for some
+ * models); we render 128 cells + a "showing N of M" affordance
+ * via VectorStrip's totalLength prop.
+ */
+export const VISIBLE_EMBEDDING_DIM = 128;
 
 /**
  * Single scene description. The runner walks an array of these.
