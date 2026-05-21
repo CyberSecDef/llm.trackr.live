@@ -111,6 +111,16 @@ export async function loadTokenizer(): Promise<Tokenizer> {
 }
 
 /**
+ * Sync getter for the cached tokenizer. Returns null when the
+ * lazy load hasn't resolved yet. Scenes that need BPE call this
+ * inside their (sync) render / transform; if it returns null,
+ * they show a "tokenizing…" placeholder.
+ */
+export function getCachedTokenizer(): Tokenizer | null {
+    return cachedTokenizer;
+}
+
+/**
  * Reset the cache. Test-only.
  */
 export function _resetTokenizerCache(): void {

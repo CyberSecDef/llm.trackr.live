@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { loadTokenizer } from '@/lib/tokenizer';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { useSceneRunner } from '@/Components/Viz/useSceneRunner';
@@ -56,6 +57,19 @@ export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicV
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
 
+    // M13 chunk 3c: warm up the BPE tokenizer as soon as a prompt
+    // arrives. Scenes 0-2 don't need it; Scene 3 does. The pipeline
+    // takes ~6.7s to reach Scene 3 at 1× speed — plenty of time for
+    // a sub-second lazy-load. If the load is still pending when
+    // Scene 3 starts, it falls back to a "tokenizing…" placeholder.
+    useEffect(() => {
+        if (prompt) {
+            void loadTokenizer().catch(() => {
+                /* fallback tokenizer kicks in inside loadTokenizer */
+            });
+        }
+    }, [prompt]);
+
     // The initial pipeline state seeds Scene 0 with the prompt text.
     // `useMemo` so the reference is stable across renders when the
     // prompt hasn't changed — otherwise useSceneRunner resets to
@@ -80,6 +94,17 @@ export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicV
     const idle = !prompt;
     const activeScene = state.currentScene;
 
+    // M13 chunk 3c: derive the VocabSidebar reveal count from the
+    // current scene + t. Scene 3 (bpe-tokenize) reveals tokens
+    // progressively; Scene 4+ shows them all.
+    const vocabTokens = state.pipelineState.tokens ?? [];
+    const vocabRevealedCount = (() => {
+        if (state.sceneIndex < 3) return 0;
+        if (state.sceneIndex > 3) return vocabTokens.length;
+        // Scene 3 in flight: linear sweep.
+        return Math.min(vocabTokens.length, Math.floor(state.t * vocabTokens.length) + 1);
+    })();
+
     return (
         <Card data-testid="cinematic-viz">
             <CardContent className="space-y-2 p-2">
@@ -92,7 +117,7 @@ export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicV
                 />
 
                 <div className="flex min-h-[400px] gap-2">
-                    <VocabSidebar />
+                    <VocabSidebar tokens={vocabTokens} revealedCount={vocabRevealedCount} />
 
                     <div className="relative flex-1 overflow-hidden rounded-md border border-border bg-slate-950">
                         <div className="absolute top-2 right-2 z-10">
