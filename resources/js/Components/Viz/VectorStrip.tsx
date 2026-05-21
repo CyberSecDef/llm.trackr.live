@@ -1,0 +1,103 @@
+import { normalize, viridisAt } from '@/lib/vizColors';
+
+/*
+ * VectorStrip (M13 chunk 2) — 1D horizontal heatmap representing
+ * a single vector (token embedding, hidden state, logits row, etc.)
+ *
+ * Per `docs/visualization.md` visual language: "Vectors =
+ * horizontal bars or 1D heatmap strips (each cell a color from a
+ * magma/viridis ramp based on value)."
+ *
+ * Implementation:
+ *   - SVG with one <rect> per visible cell
+ *   - Viridis ramp from the M12 chunk-4 palette (CB-safe under
+ *     deuteranopia / protanopia / tritanopia)
+ *   - When `values.length > visibleCells`, trailing `…` indicator
+ *     in the last 8 px so the user knows the full dim is wider.
+ *     The "implied" extent is communicated via `aria-label` so
+ *     screen-reader users hear "showing 128 of 4096 cells."
+ *   - role="img" + aria-label per the M12 chunk-3 viz-aria pattern.
+ */
+
+export interface VectorStripProps {
+    /** The full vector. We slice to `visibleCells` for rendering. */
+    values: readonly number[];
+    /** Max cells to render. Default 128 — beyond which the strip
+     *  gets too dense to read. */
+    visibleCells?: number;
+    /** Full vector length (if it exceeds `values.length` — e.g.
+     *  the caller pre-sliced). Drives the "showing N of M" text. */
+    totalLength?: number;
+    /** Pixel height of the strip. */
+    height?: number;
+    /** Pixel width of the strip. Cells share this evenly. */
+    width?: number;
+    /** Caption above the strip; not announced via aria-label. */
+    caption?: string;
+}
+
+export default function VectorStrip({
+    values,
+    visibleCells = 128,
+    totalLength,
+    height = 16,
+    width = 320,
+    caption,
+}: VectorStripProps) {
+    const fullLength = totalLength ?? values.length;
+    const slice = values.slice(0, visibleCells);
+    const truncated = fullLength > slice.length;
+    const normalized = normalize(slice);
+    // Reserve 12 px for the trailing "…" indicator when truncated.
+    const drawableWidth = truncated ? width - 12 : width;
+    const cellWidth = slice.length > 0 ? drawableWidth / slice.length : 0;
+
+    const ariaLabel = truncated
+        ? `Vector heatmap, showing ${slice.length} of ${fullLength} cells, viridis palette`
+        : `Vector heatmap, ${slice.length} cells, viridis palette`;
+
+    return (
+        <div className="space-y-0.5" data-testid="vector-strip">
+            {caption && (
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {caption}
+                </p>
+            )}
+            <svg
+                width={width}
+                height={height}
+                role="img"
+                aria-label={ariaLabel}
+                className="block rounded-sm border border-border bg-slate-950"
+                data-testid="vector-strip-svg"
+                data-visible-cells={slice.length}
+                data-total-length={fullLength}
+            >
+                {normalized.map((v, i) => (
+                    <rect
+                        key={i}
+                        x={i * cellWidth}
+                        y={0}
+                        width={cellWidth + 0.5 /* +0.5 to suppress sub-pixel seams */}
+                        height={height}
+                        fill={viridisAt(v)}
+                        data-testid={`vector-strip-cell-${i}`}
+                    />
+                ))}
+                {truncated && (
+                    <text
+                        x={width - 6}
+                        y={height / 2 + 3}
+                        textAnchor="middle"
+                        className="fill-muted-foreground"
+                        fontSize={9}
+                        fontFamily="monospace"
+                        data-testid="vector-strip-truncation"
+                    >
+                        …
+                    </text>
+                )}
+            </svg>
+        </div>
+    );
+}
