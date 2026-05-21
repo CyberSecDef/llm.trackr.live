@@ -9,6 +9,7 @@ import {
     type Scene,
     type SceneId,
 } from '@/Components/Viz/Scene';
+import { ALL_SCENES } from '@/Components/Viz/scenes';
 import VocabSidebar from '@/Components/Viz/VocabSidebar';
 import ChatBubble from '@/Components/Viz/ChatBubble';
 import LayerCounterHud from '@/Components/Viz/LayerCounterHud';
@@ -51,7 +52,7 @@ interface CinematicVizProps {
     scenes?: ReadonlyArray<Scene<PipelineState, PipelineState>>;
 }
 
-export default function CinematicViz({ prompt, scenes }: CinematicVizProps) {
+export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicVizProps) {
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
 
