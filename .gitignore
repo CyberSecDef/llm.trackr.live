@@ -9,6 +9,9 @@
 .env
 .env.backup
 .env.production
+# Local scratch file — may contain ad-hoc credentials / notes the
+# operator doesn't want committed.
+TODO.md
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

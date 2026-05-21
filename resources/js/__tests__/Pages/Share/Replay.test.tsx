@@ -107,7 +107,7 @@ describe('<SharedReplay />', () => {
         expect(text.textContent?.trim()).toBe('▍');
     });
 
-    it('mounts the viz pane stub by default (Viz tab)', () => {
+    it('mounts the CinematicViz (M13 chunk 1: replaces M8 viz tabs)', () => {
         render(
             <SharedReplay
                 token="abc"
@@ -118,7 +118,8 @@ describe('<SharedReplay />', () => {
                 prompts_redacted={false}
             />,
         );
-        expect(screen.getByTestId('viz-pane-stub')).toBeInTheDocument();
+        expect(screen.getByTestId('cinematic-viz')).toBeInTheDocument();
+        expect(screen.queryByTestId('view-viz')).not.toBeInTheDocument();
     });
 
     it('Back link points to /share/{token}', () => {

@@ -196,7 +196,7 @@ describe('Empty states — no runs in a thread', () => {
         expect(empty.querySelector('svg')).not.toBeNull();
         expect(within(empty).getByText('No prompts yet')).toBeInTheDocument();
         expect(
-            within(empty).getByText(/Type your first one in the input below/i),
+            within(empty).getByText(/Type your first one in the input above/i),
         ).toBeInTheDocument();
     });
 

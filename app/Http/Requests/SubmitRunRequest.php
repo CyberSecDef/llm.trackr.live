@@ -32,12 +32,17 @@ class SubmitRunRequest extends FormRequest
             'model_id' => ['required', 'integer', 'exists:models,id'],
             'prompt' => ['required', 'string', 'min:1'],
 
+            // `nullable` everywhere so the frontend can send the
+            // unset-by-the-user state as null without 422. The PARAM_DEFAULTS
+            // shape in ParameterControls includes `seed: null` for the
+            // "no fixed seed" case; the other params get null when the
+            // user resets a slider via the UI.
             'parameters' => ['sometimes', 'array'],
-            'parameters.temperature' => ['sometimes', 'numeric', 'between:0,2'],
-            'parameters.top_p' => ['sometimes', 'numeric', 'between:0,1'],
-            'parameters.top_k' => ['sometimes', 'integer', 'between:0,500'],
-            'parameters.max_tokens' => ['sometimes', 'integer', 'min:1'],
-            'parameters.seed' => ['sometimes', 'integer'],
+            'parameters.temperature' => ['sometimes', 'nullable', 'numeric', 'between:0,2'],
+            'parameters.top_p' => ['sometimes', 'nullable', 'numeric', 'between:0,1'],
+            'parameters.top_k' => ['sometimes', 'nullable', 'integer', 'between:0,500'],
+            'parameters.max_tokens' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'parameters.seed' => ['sometimes', 'nullable', 'integer'],
         ];
     }
 }

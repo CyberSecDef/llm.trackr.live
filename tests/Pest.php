@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /*
@@ -14,6 +15,16 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)->in('Feature');
+
+// M13 chunk 1 follow-up: every Feature test gets the
+// RefreshDatabase trait automatically. Was a latent gap after the
+// M12-followup phpunit.xml switch to `DB_DATABASE=:memory:` — tests
+// that didn't already opt in (AboutPage, WelcomePage, ErrorPages,
+// dev:login routes, etc.) hit a no-such-table error when their
+// controller stack queried e.g. registry_meta. Applying it globally
+// is cheap (:memory: migrations finish in ~50 ms per test) and
+// guarantees a clean per-test DB.
+pest()->use(RefreshDatabase::class)->in('Feature');
 
 /*
 |--------------------------------------------------------------------------

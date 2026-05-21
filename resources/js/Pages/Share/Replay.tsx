@@ -1,23 +1,17 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { lazy, Suspense, useEffect, useState } from 'react';
 import LogitsDistribution from '@/Components/LogitsDistribution';
-import VizSkeleton from '@/Components/VizSkeleton';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
+// M13 chunk 1: replaced the M8 right-pane viz toggle with a single
+// CinematicViz mount.
+import CinematicViz from '@/Components/Viz/CinematicViz';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import { cn } from '@/lib/utils';
 import type { RunEvent } from '@/types/runs';
-
-// Same lazy imports as Pages/Runs/Replay.tsx + Pages/Threads/Show.tsx
-// so the Three.js bundle is shared across all viz mount points.
-const VizPane = lazy(() => import('@/Components/Viz/VizPane'));
-const EmbeddingScene = lazy(() => import('@/Components/Viz/EmbeddingScene'));
 
 /*
  * /share/{token}/runs/{run}/replay (M11 chunk 2) — public,
@@ -91,8 +85,10 @@ export default function SharedReplay({
             <SharedLayout>
                 <div className="p-6 md:p-8 max-w-7xl">
                     <ReplayHeader token={token} thread={thread} run={run} model={model} />
+                    {/* M13 chunk 1: viz takes 2/3 (was 1/3); replay
+                        body takes 1/3 (was 2/3). */}
                     <div className="mt-4 grid gap-6 lg:grid-cols-3">
-                        <div className="lg:col-span-2 space-y-4 min-w-0">
+                        <div className="lg:col-span-1 space-y-4 min-w-0">
                             <ReplayBody
                                 run={run}
                                 events={playback.visibleEvents}
@@ -102,7 +98,7 @@ export default function SharedReplay({
                         </div>
                         <aside
                             aria-label="Run visualization"
-                            className="lg:sticky lg:top-6 lg:self-start space-y-2"
+                            className="lg:col-span-2 lg:sticky lg:top-6 lg:self-start space-y-2"
                             data-testid="viz-aside"
                         >
                             <PlaybackControls
@@ -116,10 +112,14 @@ export default function SharedReplay({
                                 onSpeedChange={(s: PlaybackSpeed) => playback.setSpeed(s)}
                                 onJumpToLive={playback.jumpToLive}
                             />
-                            <ReplayRightPane
+                            <CinematicViz
                                 events={playback.visibleEvents}
-                                totalLayers={run.total_layers}
-                                architectureType={run.architecture_type}
+                                model={{
+                                    layers: run.total_layers,
+                                    attention_heads: null,
+                                    context_length: null,
+                                    architecture_type: run.architecture_type,
+                                }}
                             />
                         </aside>
                     </div>
@@ -290,164 +290,13 @@ function ReplayBody({
     );
 }
 
-function ReplayRightPane({
-    events,
-    totalLayers,
-    architectureType,
-}: {
-    events: RunEvent[];
-    totalLayers: number | null;
-    architectureType: string | null;
-}) {
-    const reducedMotion = useReducedMotion();
-    const webgl2Supported = useWebGL2Support();
-    // M12 chunk 8 — see Threads/Show for the gate rationale.
-    const vizDisabled = reducedMotion || !webgl2Supported;
-    const embeddingsDisabled = !webgl2Supported;
-    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(vizDisabled ? 'debug' : 'viz');
-
-    useEffect(() => {
-        if (mode === 'viz' && vizDisabled) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setMode('debug');
-        } else if (mode === 'embeddings' && embeddingsDisabled) {
-            setMode('debug');
-        }
-    }, [vizDisabled, embeddingsDisabled, mode]);
-
-    return (
-        <div className="space-y-2">
-            <div
-                className="flex rounded-md border border-border"
-                role="tablist"
-                aria-label="Right pane view"
-            >
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'viz'}
-                    onClick={() => setMode('viz')}
-                    disabled={vizDisabled}
-                    title={
-                        !webgl2Supported
-                            ? 'Visualization disabled because this browser does not support WebGL 2.0.'
-                            : reducedMotion
-                              ? 'Visualization disabled because prefers-reduced-motion is set.'
-                              : undefined
-                    }
-                    className={cn(
-                        'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'viz'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        vizDisabled && 'cursor-not-allowed opacity-50',
-                    )}
-                    data-testid="view-viz"
-                >
-                    Visualization
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'embeddings'}
-                    onClick={() => setMode('embeddings')}
-                    disabled={embeddingsDisabled}
-                    title={
-                        embeddingsDisabled
-                            ? 'Embeddings disabled because this browser does not support WebGL 2.0.'
-                            : undefined
-                    }
-                    className={cn(
-                        'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'embeddings'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        embeddingsDisabled && 'cursor-not-allowed opacity-50',
-                    )}
-                    data-testid="view-embeddings"
-                >
-                    Embeddings
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'debug'}
-                    onClick={() => setMode('debug')}
-                    className={cn(
-                        'flex-1 rounded-r-md px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'debug'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                    )}
-                    data-testid="view-debug"
-                >
-                    Debug
-                </button>
-            </div>
-
-            {!webgl2Supported && (
-                <div
-                    className="rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
-                    role="note"
-                    data-testid="webgl-unsupported-notice"
-                >
-                    Your browser doesn&apos;t expose WebGL 2.0 — the 3D visualization + embedding
-                    scenes are unavailable. The Debug tab still works and shows the same event
-                    stream as text.
-                </div>
-            )}
-
-            {mode === 'viz' && (
-                <Suspense
-                    fallback={<VizSkeleton testId="viz-loading" label="Loading visualization" />}
-                >
-                    <VizPane
-                        events={events}
-                        status="streaming"
-                        totalLayers={totalLayers}
-                        architectureType={architectureType}
-                    />
-                </Suspense>
-            )}
-            {mode === 'embeddings' && (
-                <Suspense
-                    fallback={
-                        <VizSkeleton
-                            testId="embeddings-loading"
-                            label="Loading embedding scatter"
-                        />
-                    }
-                >
-                    <EmbeddingScene events={events} status="streaming" />
-                </Suspense>
-            )}
-            {mode === 'debug' && (
-                <Card>
-                    <CardContent className="space-y-2 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Replay event stream
-                        </p>
-                        <pre
-                            className="max-h-[50vh] overflow-auto rounded bg-muted/40 p-2 text-[11px] font-mono leading-relaxed text-foreground/90"
-                            data-testid="shared-replay-events"
-                        >
-                            {events.length === 0
-                                ? '// click play to begin replay'
-                                : events
-                                      .map((e) =>
-                                          JSON.stringify({ event: e.event, ...e.payload }, null, 2),
-                                      )
-                                      .join('\n\n')}
-                        </pre>
-                    </CardContent>
-                </Card>
-            )}
-        </div>
-    );
-}
+/*
+ * M13 chunk 1: ReplayRightPane removed. The M8-era right-pane viz
+ * toggle is replaced by a single CinematicViz mount in the
+ * SharedReplay body. Chunk 13 will reintroduce a debug-text
+ * fallback path inside CinematicViz for the WebGL-2-unsupported
+ * case if needed.
+ */
 
 function SharedLayout({ children }: { children: React.ReactNode }) {
     return (

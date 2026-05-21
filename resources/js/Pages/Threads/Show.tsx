@@ -6,23 +6,19 @@ import {
     ArrowLeft,
     ChevronDown,
     ChevronRight,
+    ChevronUp,
     Download,
     KeyRound,
     Pencil,
     Play,
-    Radio,
     Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { lazy, Suspense } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { useEventPlayback, type PlaybackSpeed } from '@/hooks/useEventPlayback';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { useRunStream } from '@/hooks/useRunStream';
 import { computeStreamMetrics } from '@/lib/streamMetrics';
 import ExportDownloadMenu from '@/Components/ExportDownloadMenu';
-import VizSkeleton from '@/Components/VizSkeleton';
 import LogitsDistribution from '@/Components/LogitsDistribution';
 import MoERouting from '@/Components/MoERouting';
 import PlaybackControls from '@/Components/PlaybackControls';
@@ -33,18 +29,14 @@ import ParameterControls, {
     PARAM_DEFAULTS,
     type ParameterValues,
 } from '@/Components/ParameterControls';
+// M13 chunk 1: replaced the M8 right-pane viz toggle (VizPane +
+// EmbeddingScene + Debug tabs) with a single CinematicViz mount.
+import CinematicViz from '@/Components/Viz/CinematicViz';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
 import type { RunEvent } from '@/types/runs';
-
-// M8: lazy-load the Three.js / D3 viz so its bundle (~600KB) is
-// only fetched when a user actually views a thread.
-const VizPane = lazy(() => import('@/Components/Viz/VizPane'));
-// M8 chunk 7: separate lazy import for the embedding scene so its
-// vocab data only loads when the user toggles to that tab.
-const EmbeddingScene = lazy(() => import('@/Components/Viz/EmbeddingScene'));
 import {
     AlertDialog,
     AlertDialogAction,
@@ -166,27 +158,34 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
             <AppLayout title="Thread">
                 <div className="p-6 md:p-8 max-w-7xl">
                     <BackLink />
-                    {/* Desktop: 3-col grid with transcript+form spanning 2,
-                        viz pane on the right. Mobile: single column. */}
+                    {/* Desktop: 3-col grid. M13 chunk 1 flipped the
+                        split — viz takes 2/3 (the new cinematic mount
+                        is the primary surface), transcript+prompt take
+                        1/3. Mobile: single column. */}
                     <div className="mt-4 grid gap-6 lg:grid-cols-3">
-                        <div className="lg:col-span-2 space-y-6 min-w-0">
+                        <div className="lg:col-span-1 space-y-6 min-w-0">
                             <ThreadHeader thread={thread} />
-                            <Transcript
-                                threadId={thread.id}
-                                runs={runs}
-                                events={playback.visibleEvents}
-                                usableModels={usable_models}
-                            />
+                            {/* M12 manual-testing UX revision: prompt
+                                always at the top, transcript below
+                                with newest-run-first. Lets the user
+                                submit a follow-up without scrolling
+                                past a long transcript. */}
                             <PromptFooter
                                 threadId={thread.id}
                                 usableModels={usable_models}
                                 hasApiKeys={has_api_keys}
                                 defaultModelId={thread.default_model_id}
                             />
+                            <Transcript
+                                threadId={thread.id}
+                                runs={runs}
+                                events={playback.visibleEvents}
+                                usableModels={usable_models}
+                            />
                         </div>
                         <aside
                             aria-label="Run visualization"
-                            className="lg:sticky lg:top-6 lg:self-start space-y-2"
+                            className="lg:col-span-2 lg:sticky lg:top-6 lg:self-start space-y-2"
                             data-testid="viz-aside"
                         >
                             <PlaybackControls
@@ -216,17 +215,20 @@ export default function ThreadShow({ thread, runs, usable_models, has_api_keys }
 }
 
 /**
- * RightPane (M8 chunk 1) — viewer-toggle wrapper. Defaults to the
- * VizPane (M8); a "Debug" toggle in the header swaps to the chunk-6b
- * LiveStreamPane (event JSON list). Reduced-motion users get the
- * debug view automatically and can't switch to the animated viz.
+ * RightPane (M13 chunk 1) — single CinematicViz mount. The M8 tab
+ * toggle (view-viz / view-embeddings / view-debug) is gone; the
+ * cinematic viz handles its own degraded modes (chunk 13 wires
+ * those up — for now it just shows a gate-notice banner).
+ *
+ * The terminal-status reload effect is retained: regardless of
+ * what the viz is doing, the transcript on the left needs to
+ * refresh from the controller when a run completes / errors so
+ * the run row shows the final output text.
  */
 function RightPane({
     activeRun,
     events,
     status,
-    transport,
-    disabled,
 }: {
     activeRun: RunRow | null;
     events: RunEvent[];
@@ -234,35 +236,6 @@ function RightPane({
     transport: 'websocket' | 'sse' | 'none';
     disabled: boolean;
 }) {
-    const reducedMotion = useReducedMotion();
-    const webgl2Supported = useWebGL2Support();
-    // M12 chunk 8: WebGL 2 unavailable disables BOTH 3D tabs (Viz +
-    // Embeddings both need a WebGL 2 context). Reduced-motion only
-    // disables the Viz tab — the embedding cloud's auto-orbit
-    // pauses once a spotlight is active, so it's still consumable.
-    const vizDisabled = reducedMotion || !webgl2Supported;
-    const embeddingsDisabled = !webgl2Supported;
-    const [mode, setMode] = useState<'viz' | 'embeddings' | 'debug'>(vizDisabled ? 'debug' : 'viz');
-
-    // If reduced-motion flips on or WebGL availability flips off
-    // (the latter shouldn't happen mid-session but we re-probe on
-    // mount) while a now-disabled tab is active, fall through to
-    // debug. We don't auto-restore to viz/embeddings on the reverse
-    // flip — the user can re-select manually.
-    useEffect(() => {
-        if (mode === 'viz' && vizDisabled) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setMode('debug');
-        } else if (mode === 'embeddings' && embeddingsDisabled) {
-            setMode('debug');
-        }
-    }, [vizDisabled, embeddingsDisabled, mode]);
-
-    // Terminal-status reload — fires regardless of which view is
-    // active so the transcript on the left always refreshes with the
-    // final output. Originally lived inside LiveStreamPane (M7 chunk
-    // 6b); lifted to RightPane in M8 chunk 1 because the viz can be
-    // the visible view at terminal time.
     useEffect(() => {
         if (status === 'complete' || status === 'errored') {
             const handle = setTimeout(() => {
@@ -272,129 +245,20 @@ function RightPane({
         }
     }, [status]);
 
-    const totalLayers = activeRun?.total_layers ?? null;
-    const architectureType = activeRun?.architecture_type ?? null;
-
     return (
-        <div className="space-y-2">
-            <div
-                className="flex rounded-md border border-border"
-                role="tablist"
-                aria-label="Right pane view"
-                data-testid="right-pane-toggle"
-            >
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'viz'}
-                    onClick={() => setMode('viz')}
-                    disabled={vizDisabled}
-                    title={
-                        !webgl2Supported
-                            ? 'Visualization disabled because this browser does not support WebGL 2.0.'
-                            : reducedMotion
-                              ? 'Visualization disabled because prefers-reduced-motion is set.'
-                              : undefined
-                    }
-                    className={cn(
-                        'flex-1 rounded-l-md px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'viz'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        vizDisabled && 'cursor-not-allowed opacity-50',
-                    )}
-                    data-testid="view-viz"
-                >
-                    Visualization
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'embeddings'}
-                    onClick={() => setMode('embeddings')}
-                    disabled={embeddingsDisabled}
-                    title={
-                        embeddingsDisabled
-                            ? 'Embeddings disabled because this browser does not support WebGL 2.0.'
-                            : undefined
-                    }
-                    className={cn(
-                        'flex-1 border-x border-border px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'embeddings'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        embeddingsDisabled && 'cursor-not-allowed opacity-50',
-                    )}
-                    data-testid="view-embeddings"
-                >
-                    Embeddings
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'debug'}
-                    onClick={() => setMode('debug')}
-                    className={cn(
-                        'flex-1 rounded-r-md px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                        mode === 'debug'
-                            ? 'bg-accent text-accent-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                    )}
-                    data-testid="view-debug"
-                >
-                    Debug
-                </button>
-            </div>
-
-            {!webgl2Supported && (
-                <div
-                    className="rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
-                    role="note"
-                    data-testid="webgl-unsupported-notice"
-                >
-                    Your browser doesn&apos;t expose WebGL 2.0 — the 3D visualization + embedding
-                    scenes are unavailable. The Debug tab still works and shows the same event
-                    stream as text.
-                </div>
-            )}
-
-            {mode === 'viz' && (
-                <Suspense
-                    fallback={<VizSkeleton testId="viz-loading" label="Loading visualization" />}
-                >
-                    <VizPane
-                        events={events}
-                        status={status}
-                        totalLayers={totalLayers}
-                        architectureType={architectureType}
-                    />
-                </Suspense>
-            )}
-            {mode === 'embeddings' && (
-                <Suspense
-                    fallback={
-                        <VizSkeleton
-                            testId="embeddings-loading"
-                            label="Loading embedding scatter"
-                        />
-                    }
-                >
-                    <EmbeddingScene events={events} status={status} />
-                </Suspense>
-            )}
-            {mode === 'debug' && (
-                <LiveStreamPane
-                    activeRun={activeRun}
-                    events={events}
-                    status={status}
-                    transport={transport}
-                    disabled={disabled}
-                />
-            )}
-        </div>
+        <CinematicViz
+            events={events}
+            model={
+                activeRun
+                    ? {
+                          layers: activeRun.total_layers,
+                          attention_heads: null,
+                          context_length: null,
+                          architecture_type: activeRun.architecture_type,
+                      }
+                    : null
+            }
+        />
     );
 }
 
@@ -588,11 +452,11 @@ function Transcript({
         return (
             <Card className="border-dashed bg-card/40 text-center" data-testid="empty-transcript">
                 <CardContent className="flex flex-col items-center gap-3 py-10">
-                    <ChevronDown className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                    <ChevronUp className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
                     <div className="space-y-1">
                         <p className="font-medium">No prompts yet</p>
                         <p className="text-sm text-muted-foreground">
-                            Type your first one in the input below to start the thread.
+                            Type your first one in the input above to start the thread.
                         </p>
                     </div>
                 </CardContent>
@@ -600,9 +464,17 @@ function Transcript({
         );
     }
 
+    // M12 manual-testing UX revision: newest run at the top so the
+    // user sees the most recent activity without scrolling. The
+    // controller still returns runs in sequence_in_thread asc order
+    // for the WebSocket subscription + active-run detection
+    // (`findActiveRun` walks backwards already); we just reverse for
+    // display.
+    const displayRuns = [...runs].reverse();
+
     return (
         <section className="space-y-4" data-testid="transcript">
-            {runs.map((run) => {
+            {displayRuns.map((run) => {
                 const isLive = run.status === 'pending' || run.status === 'streaming';
                 const model = isLive
                     ? (usableModels.find((m) => m.id === run.model_id) ?? null)
@@ -1037,6 +909,24 @@ function PromptForm({
                     {form.errors.prompt && (
                         <p className="text-xs text-destructive">{form.errors.prompt}</p>
                     )}
+                    {form.errors.model_id && (
+                        <p className="text-xs text-destructive">{form.errors.model_id}</p>
+                    )}
+                    {/* M12 manual-testing: surface parameter validation
+                        errors (parameters.seed, parameters.max_tokens, etc.)
+                        instead of silently dropping them. Inertia gives us
+                        dot-notation keys; filter the errors map by prefix. */}
+                    {Object.entries(form.errors)
+                        .filter(([key]) => key.startsWith('parameters.'))
+                        .map(([key, message]) => (
+                            <p
+                                key={key}
+                                className="text-xs text-destructive"
+                                data-testid={`error-${key}`}
+                            >
+                                {key.replace('parameters.', '')}: {message}
+                            </p>
+                        ))}
 
                     {preview && <BudgetIndicator preview={preview} />}
 
@@ -1178,82 +1068,10 @@ function BudgetIndicator({ preview }: { preview: PromptPreviewResponse }) {
     );
 }
 
-/**
- * LiveStreamPane (M7 chunk 6b; M8 chunk 1 took the stream as props).
- * Right-column live view of the currently-active run's broadcast
- * events. The subscription is now lifted to ThreadShow so the viz
- * pane (M8) and this pane share one Echo channel.
- *
- * When the run reaches a terminal status, partial-reloads the page
- * so the transcript on the left picks up the final output_text +
- * token counts; the pane then returns to its empty state until the
- * next submit.
+/*
+ * M13 chunk 1: LiveStreamPane removed. The M8-era debug-tab raw
+ * event JSON view is no longer mounted; the new CinematicViz
+ * mount owns the viz region. Chunk 13 will reintroduce a 2D /
+ * debug-text fallback path inside CinematicViz for the
+ * WebGL-2-unsupported case if needed.
  */
-function LiveStreamPane({
-    activeRun,
-    events,
-    status,
-    transport,
-    disabled,
-}: {
-    activeRun: RunRow | null;
-    events: RunEvent[];
-    status: 'idle' | 'streaming' | 'complete' | 'errored';
-    transport: 'websocket' | 'sse' | 'none';
-    disabled: boolean;
-}) {
-    // Auto-reload-on-terminal moved up to RightPane in M8 chunk 1
-    // so it fires regardless of which view (Viz / Debug) is active.
-
-    if (!activeRun) {
-        return (
-            <Card className="border-dashed bg-card/30" data-testid="live-empty">
-                <CardContent className="p-4 text-center text-xs text-muted-foreground">
-                    Submit a prompt to see live token events here.
-                </CardContent>
-            </Card>
-        );
-    }
-
-    return (
-        <Card data-testid="live-pane">
-            <CardContent className="space-y-3 p-4">
-                <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Run #{activeRun.sequence_in_thread} — live
-                    </p>
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Radio
-                            className={cn(
-                                'h-3 w-3',
-                                status === 'streaming' &&
-                                    'text-emerald-400 motion-safe:animate-pulse',
-                            )}
-                            aria-hidden="true"
-                        />
-                        {status}
-                    </span>
-                </div>
-                <p className="text-[10px] text-muted-foreground" data-testid="live-transport">
-                    transport: {transport}
-                </p>
-                {disabled && (
-                    <p className="text-xs text-amber-400" data-testid="live-transport-unavailable">
-                        No realtime transport available. The transcript will refresh once the run
-                        completes.
-                    </p>
-                )}
-                <pre
-                    className="max-h-[50vh] overflow-auto rounded bg-muted/40 p-2 text-[11px] font-mono leading-relaxed text-foreground/90"
-                    data-testid="live-events"
-                >
-                    {events.length === 0
-                        ? '// waiting for events…'
-                        : events
-                              .map((e) => JSON.stringify({ event: e.event, ...e.payload }, null, 2))
-                              .join('\n\n')}
-                </pre>
-            </CardContent>
-        </Card>
-    );
-}

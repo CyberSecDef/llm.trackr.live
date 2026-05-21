@@ -44,16 +44,24 @@ class PromptPreviewController extends Controller
     {
         abort_unless($thread->user_id === $request->user()->id, 403);
 
+        // `prompt` is `nullable|string` because the frontend fires this
+        // on a 400ms debounce as the user types — including the initial
+        // empty-input state. Laravel's ConvertEmptyStringsToNull
+        // middleware turns the front-end's `''` into `null` before
+        // validation runs, so the rule has to accept null; we then
+        // coerce back to `''` before tokenizing. The preview is still
+        // meaningful (history tokens + model info + 0 prompt tokens)
+        // when the prompt is empty.
         $validated = $request->validate([
-            'prompt' => ['required', 'string'],
+            'prompt' => ['nullable', 'string'],
             'model_id' => ['required', 'integer', 'exists:models,id'],
             'parameters' => ['sometimes', 'array'],
-            'parameters.max_tokens' => ['sometimes', 'integer', 'min:0'],
+            'parameters.max_tokens' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
 
         $model = LlmModel::findOrFail($validated['model_id']);
         $history = $this->historyBuilder->build($thread);
-        $prompt = $validated['prompt'];
+        $prompt = $validated['prompt'] ?? '';
         $reserved = (int) ($validated['parameters']['max_tokens'] ?? 0);
 
         $counter = $this->tokenCounters->counterFor($model->vendor, $model->name);

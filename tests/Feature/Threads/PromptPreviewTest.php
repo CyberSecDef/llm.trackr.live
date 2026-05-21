@@ -54,15 +54,28 @@ describe('auth & authorization', function () {
 });
 
 describe('validation', function () {
-    it('rejects when prompt is missing', function () {
+    it('accepts a missing or empty prompt and returns zero prompt-tokens', function () {
+        // M12 user-testing fix: the frontend fires the preview on a
+        // 400ms debounce as the user types — including the initial
+        // empty-input state. The endpoint accepts a missing / null /
+        // empty prompt and returns history + model info with a 0
+        // prompt-token count, so the preview UI stays in sync.
         $user = User::factory()->create();
         $thread = Thread::factory()->for($user)->create();
         $model = LlmModel::factory()->create();
 
         $this->actingAs($user)
             ->postJson("/threads/{$thread->id}/preview", ['model_id' => $model->id])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['prompt']);
+            ->assertStatus(200)
+            ->assertJsonPath('token_counts.prompt', 0);
+
+        $this->actingAs($user)
+            ->postJson("/threads/{$thread->id}/preview", [
+                'model_id' => $model->id,
+                'prompt' => '',
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('token_counts.prompt', 0);
     });
 
     it('rejects when model_id is missing', function () {

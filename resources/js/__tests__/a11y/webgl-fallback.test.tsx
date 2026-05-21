@@ -131,8 +131,16 @@ afterEach(() => {
     delete (globalThis as any).fetch;
 });
 
-describe('Threads/Show WebGL2-unsupported fallback', () => {
-    it('shows the webgl-unsupported notice', () => {
+describe('CinematicViz WebGL2-unsupported gate (M13 chunk 1)', () => {
+    // The M8-era right-pane tab toggle (view-viz / view-embeddings /
+    // view-debug + a per-tab disabled state) is gone. Chunk 1 of M13
+    // mounts CinematicViz directly and the gate surfaces as a single
+    // amber notice inside the new mount. Chunk 13 evolves the gate
+    // into the tri-state (full / 2D-svg / debug-text) — for now we
+    // just assert that the notice renders + the M8 testids no longer
+    // exist.
+
+    it('mounts CinematicViz + shows the gate notice when WebGL 2 is unavailable', () => {
         render(
             <ThreadShow
                 thread={baseThread}
@@ -141,10 +149,12 @@ describe('Threads/Show WebGL2-unsupported fallback', () => {
                 has_api_keys={true}
             />,
         );
-        expect(screen.getByTestId('webgl-unsupported-notice')).toBeInTheDocument();
+        expect(screen.getByTestId('cinematic-viz')).toBeInTheDocument();
+        const notice = screen.getByTestId('cinematic-viz-gate-notice');
+        expect(notice.textContent).toMatch(/WebGL 2\.0/i);
     });
 
-    it('disables the Visualization tab', () => {
+    it('no longer renders the M8-era view-viz / view-embeddings / view-debug tab toggle', () => {
         render(
             <ThreadShow
                 thread={baseThread}
@@ -153,35 +163,9 @@ describe('Threads/Show WebGL2-unsupported fallback', () => {
                 has_api_keys={true}
             />,
         );
-        const viz = screen.getByTestId('view-viz');
-        expect(viz).toBeDisabled();
-        expect(viz.getAttribute('title')).toMatch(/WebGL 2\.0/);
-    });
-
-    it('disables the Embeddings tab', () => {
-        render(
-            <ThreadShow
-                thread={baseThread}
-                runs={[]}
-                usable_models={oneModel}
-                has_api_keys={true}
-            />,
-        );
-        const emb = screen.getByTestId('view-embeddings');
-        expect(emb).toBeDisabled();
-        expect(emb.getAttribute('title')).toMatch(/WebGL 2\.0/);
-    });
-
-    it('defaults to the Debug tab (no viz / embedding stubs mounted)', () => {
-        render(
-            <ThreadShow
-                thread={baseThread}
-                runs={[]}
-                usable_models={oneModel}
-                has_api_keys={true}
-            />,
-        );
-        expect(screen.queryByTestId('viz-pane-stub')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('embedding-scene-stub')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('view-viz')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('view-embeddings')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('view-debug')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('webgl-unsupported-notice')).not.toBeInTheDocument();
     });
 });

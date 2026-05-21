@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Stub the lazy-loaded viz panes (no WebGL in jsdom).
@@ -144,19 +144,15 @@ describe('<Replay />', () => {
         expect(screen.getByText('What is 2+2?')).toBeInTheDocument();
     });
 
-    it('shows replay-pane viz tab by default (no debug, no embeddings)', () => {
+    it('mounts the CinematicViz visualization (M13 chunk 1: replaces M8 viz tabs)', () => {
         render(<Replay thread={thread} run={baseRun} events={events} model={baseModel} />);
-        expect(screen.getByTestId('viz-pane-stub')).toBeInTheDocument();
-        expect(screen.queryByTestId('embedding-scene-stub')).not.toBeInTheDocument();
+        expect(screen.getByTestId('cinematic-viz')).toBeInTheDocument();
+        // The single mount replaces the M8 view-viz / view-embeddings /
+        // view-debug tab toggle; none of those should exist anymore.
+        expect(screen.queryByTestId('view-viz')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('view-embeddings')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('view-debug')).not.toBeInTheDocument();
         expect(screen.queryByTestId('replay-debug-pane')).not.toBeInTheDocument();
-    });
-
-    it('the Debug tab shows the replay event JSON dump', () => {
-        render(<Replay thread={thread} run={baseRun} events={events} model={baseModel} />);
-        fireEvent.click(screen.getByTestId('view-debug'));
-        expect(screen.getByTestId('replay-debug-pane')).toBeInTheDocument();
-        // Initially paused with 0 visible events → placeholder text.
-        expect(screen.getByTestId('replay-events').textContent).toContain('click play to begin');
     });
 
     it('shows the error badge + message when status is "error"', () => {
