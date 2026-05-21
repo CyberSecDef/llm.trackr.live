@@ -258,6 +258,7 @@ function RightPane({
                       }
                     : null
             }
+            prompt={activeRun?.prompt ?? null}
         />
     );
 }

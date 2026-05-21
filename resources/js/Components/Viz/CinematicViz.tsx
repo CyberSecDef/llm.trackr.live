@@ -1,7 +1,14 @@
+import { useMemo } from 'react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useWebGL2Support } from '@/hooks/useWebGL2Support';
 import { useSceneRunner } from '@/Components/Viz/useSceneRunner';
-import { SCENE_LABELS } from '@/Components/Viz/Scene';
+import {
+    SCENE_IDS,
+    SCENE_LABELS,
+    type PipelineState,
+    type Scene,
+    type SceneId,
+} from '@/Components/Viz/Scene';
 import VocabSidebar from '@/Components/Viz/VocabSidebar';
 import ChatBubble from '@/Components/Viz/ChatBubble';
 import LayerCounterHud from '@/Components/Viz/LayerCounterHud';
@@ -10,62 +17,67 @@ import { Card, CardContent } from '@/Components/ui/card';
 import type { RunEvent } from '@/types/runs';
 
 /*
- * CinematicViz (M13 chunk 1 stub) — the single mount point that
- * replaces the M8 right-pane tab toggle. Chunks 3-9 register
- * scenes with the runner; chunk 10 wires the persistent UI
- * sections to live data; chunks 11-13 add controls + degraded
- * modes. For now this just lays out the regions so the page
- * layout is final by chunk-1 close.
+ * CinematicViz (M13) — the single mount point that replaces the
+ * M8 right-pane tab toggle. Chunk 1 stubbed; chunk 3 wires in the
+ * first 5 scenes (text → tokens); chunks 4-9 add the rest.
  *
- * Layout (within the 2/3-of-row viz aside):
+ * Chunk 3a additions:
+ *   - `prompt: string | null` prop. When `null`, the canvas shows
+ *     the idle screen ("Submit a prompt to start"). When a string
+ *     arrives, the runner seeds PipelineState with {promptText}
+ *     and starts walking the registered scenes.
+ *   - `scenes` array passed from the parent (chunks 3-9 add entries).
+ *     For chunk 3a the registry is empty; chunk 3b/3c fill it.
+ *   - Active scene's `render(t, pipelineState)` mounts in the canvas
+ *     region. When the registry is empty or the index has no scene,
+ *     the placeholder text from chunk 1 still shows.
  *
- *   ┌───────────────────────────────────────────────────────┐
- *   │ PipelineProgressBar (21 segments, current highlighted) │
- *   ├──────────┬────────────────────────────────────────────┤
- *   │          │                                            │
- *   │  Vocab   │   ┌──── LayerCounterHud (top-right) ────┐  │
- *   │  Sidebar │   │                                     │  │
- *   │          │   │   Scene canvas                       │  │
- *   │          │   │   (Scene N / total — chunk-1 stub) │  │
- *   │          │   │                                     │  │
- *   │          │   └─────────────────────────────────────┘  │
- *   │          │   ChatBubble (streaming output)             │
- *   └──────────┴────────────────────────────────────────────┘
- *
- * The aspect-square footprint from the old VizPane is replaced
- * with a flexible region that grows with the viz aside's width.
+ * Layout (within the 2/3-of-row viz aside) unchanged from chunk 1.
  */
 
 interface CinematicVizProps {
     /** Live or replayed event stream. Wired in chunk 10. */
     events: RunEvent[];
-    /** Model snapshot for layer count, vocab size, etc. Wired chunk 2+. */
+    /** Model snapshot for layer count, vocab size, etc. Wired chunk 4+. */
     model?: {
         layers: number | null;
         attention_heads: number | null;
         context_length: number | null;
         architecture_type: string | null;
     } | null;
+    /** The active run's prompt text. `null` means no run yet — idle screen. */
+    prompt?: string | null;
+    /** Registered scene definitions, Scene 0..Scene 20. Defaults to []. */
+    scenes?: ReadonlyArray<Scene<PipelineState, PipelineState>>;
 }
 
-// Chunk 1 stub: props are received but not consumed yet — scenes
-// (chunks 3-9) will plumb them in. Disable the unused-vars + empty-
-// object-pattern lint warnings for the placeholder period.
-
-export default function CinematicViz(_props: CinematicVizProps) {
+export default function CinematicViz({ prompt, scenes }: CinematicVizProps) {
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
-    const { state, controls } = useSceneRunner();
 
-    // M13 chunk 1 — gate semantics are placeholder. Chunk 13 owns
-    // the tri-state (full / 2D-svg / debug-text) implementation.
-    // For now: just surface the banner copy so the user knows
-    // what they're looking at.
+    // The initial pipeline state seeds Scene 0 with the prompt text.
+    // `useMemo` so the reference is stable across renders when the
+    // prompt hasn't changed — otherwise useSceneRunner resets to
+    // Scene 0 on every parent render.
+    const initialState = useMemo<PipelineState>(
+        () => (prompt ? { promptText: prompt } : {}),
+        [prompt],
+    );
+
+    const { state, controls } = useSceneRunner({
+        scenes,
+        initialState,
+        autoplay: prompt !== null && prompt !== undefined,
+    });
+
     const gateMessage = !webgl2Supported
         ? 'WebGL 2.0 is unavailable in this browser. The visualization will render in 2D-only mode once Chunk 13 lands.'
         : reducedMotion
           ? 'Reduced-motion is set. The visualization will play scene-by-scene without continuous animation once Chunk 13 lands.'
           : null;
+
+    const idle = !prompt;
+    const activeScene = state.currentScene;
 
     return (
         <Card data-testid="cinematic-viz">
@@ -73,17 +85,8 @@ export default function CinematicViz(_props: CinematicVizProps) {
                 <PipelineProgressBar
                     currentSceneId={state.sceneId}
                     onSelectScene={(id) => {
-                        // The hook controls accept index; PipelineProgressBar
-                        // emits the id. We resolve via the scene order.
-                        // (Cheap: 21 entries, indexOf is fine.)
-                        const idx = state.sceneIndex;
-                        if (state.sceneId !== id) {
-                            // Find target index by id
-                            const targetIdx = findSceneIndex(id);
-                            if (targetIdx !== -1) controls.setScene(targetIdx);
-                        } else {
-                            controls.setScene(idx);
-                        }
+                        const targetIdx = SCENE_IDS.indexOf(id as SceneId);
+                        if (targetIdx !== -1) controls.setScene(targetIdx);
                     }}
                 />
 
@@ -105,23 +108,51 @@ export default function CinematicViz(_props: CinematicVizProps) {
                             </div>
                         )}
 
-                        {/* Scene canvas — stub. Chunks 3-9 mount the active
-                            scene's render(t, input) output here. */}
-                        <div
-                            className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
-                            data-testid="cinematic-viz-canvas"
-                        >
-                            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                                Scene {state.sceneIndex} / {state.totalScenes - 1}
-                            </p>
-                            <p className="text-sm text-foreground/80">
-                                {SCENE_LABELS[state.sceneId]}
-                            </p>
-                            <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
-                                Cinematic visualization — Chunk 1 stub. Real scenes land in Chunks 3
-                                through 9.
-                            </p>
-                        </div>
+                        {idle ? (
+                            <div
+                                className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
+                                data-testid="cinematic-viz-idle"
+                            >
+                                <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                                    Pipeline idle
+                                </p>
+                                <p className="text-sm text-foreground/80">
+                                    Submit a prompt to start the visualization.
+                                </p>
+                                <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
+                                    The 20-scene narrative runs from prompt entry through
+                                    autoregressive token emission.
+                                </p>
+                            </div>
+                        ) : activeScene ? (
+                            <div
+                                className="flex h-full min-h-[400px] flex-col"
+                                data-testid="cinematic-viz-canvas"
+                                data-scene-id={state.sceneId}
+                                data-scene-t={state.t.toFixed(3)}
+                            >
+                                {activeScene.render(state.t, state.pipelineState)}
+                            </div>
+                        ) : (
+                            // Prompt present but the scene at this index isn't
+                            // registered yet. Show the chunk-1 placeholder text
+                            // so the user knows where we are in the pipeline.
+                            <div
+                                className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
+                                data-testid="cinematic-viz-canvas"
+                                data-scene-id={state.sceneId}
+                            >
+                                <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                                    Scene {state.sceneIndex} / {state.totalScenes - 1}
+                                </p>
+                                <p className="text-sm text-foreground/80">
+                                    {SCENE_LABELS[state.sceneId]}
+                                </p>
+                                <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
+                                    Scene not yet implemented. Lands in a later M13 sub-chunk.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="absolute bottom-2 right-2 z-10 w-72">
                             <ChatBubble />
@@ -131,9 +162,4 @@ export default function CinematicViz(_props: CinematicVizProps) {
             </CardContent>
         </Card>
     );
-}
-
-import { SCENE_IDS, type SceneId } from '@/Components/Viz/Scene';
-function findSceneIndex(id: SceneId): number {
-    return SCENE_IDS.indexOf(id);
 }

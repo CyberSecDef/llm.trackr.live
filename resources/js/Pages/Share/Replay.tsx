@@ -120,6 +120,7 @@ export default function SharedReplay({
                                     context_length: null,
                                     architecture_type: run.architecture_type,
                                 }}
+                                prompt={run.prompt}
                             />
                         </aside>
                     </div>

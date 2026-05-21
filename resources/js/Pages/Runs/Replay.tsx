@@ -108,6 +108,7 @@ export default function Replay({ thread, run, events, model }: ReplayPageProps) 
                                     context_length: null,
                                     architecture_type: run.architecture_type,
                                 }}
+                                prompt={run.prompt}
                             />
                         </aside>
                     </div>

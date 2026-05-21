@@ -16,6 +16,8 @@
  */
 
 import type { ReactNode } from 'react';
+import type { CharByteMapping } from '@/lib/textEncoding';
+import type { BpeToken } from '@/lib/tokenizer';
 
 /**
  * Stable ordinal identifier for each scene in the pipeline. Used
@@ -75,6 +77,45 @@ export const SCENE_LABELS: Record<SceneId, string> = {
     'kv-cache': 'Cache',
     detokenize: 'Detok',
 };
+
+/**
+ * PipelineState (M13 chunk 3a) — wide, optional-fields record
+ * threaded across all 21 scenes. Each scene reads what it needs
+ * and adds its derived fields to the next state.
+ *
+ * Per the chunk-3a pre-discussion: the alternative ("typed I/O
+ * chain where each scene's O is the next scene's I") was rejected
+ * for verbosity. A single wide record matches how the viz actually
+ * thinks about state — at any point in the pipeline the entire
+ * accumulated derivation is available for the in-progress scene
+ * to reference.
+ *
+ * Fields are added as later chunks land:
+ *   - chunk 3:  promptText, charBytes, chatTemplateBytes,
+ *               chatTemplateTints, tokens, contextLength
+ *   - chunk 4:  embeddings, positionEncoded
+ *   - chunk 5:  qkv, attentionScores, attentionOutput
+ *   - chunk 6:  residuals, ffnOutput
+ *   - chunk 8:  logits, probabilities, sampledToken
+ *   - chunk 9:  generatedTokens (the chat-bubble accumulator)
+ *
+ * The empty `{}` is the initial value before a prompt arrives.
+ */
+export interface PipelineState {
+    /** Raw prompt text (Scene 0 output). */
+    promptText?: string;
+    /** Per-character UTF-8 byte mappings (Scene 1 output). */
+    charBytes?: readonly CharByteMapping[];
+    /** Chat-template-wrapped byte stream (Scene 2 output). */
+    chatTemplateBytes?: readonly number[];
+    /** Tint group per byte: 'system' (purple), 'user' / 'assistant'
+     *  (role markers, teal), or 'user-prompt' (untinted). */
+    chatTemplateTints?: readonly ('system' | 'user' | 'assistant' | 'user-prompt')[];
+    /** BPE tokens (Scene 3 output). */
+    tokens?: readonly BpeToken[];
+    /** Final context length, in tokens (Scene 4 output). */
+    contextLength?: number;
+}
 
 /**
  * Single scene description. The runner walks an array of these.
