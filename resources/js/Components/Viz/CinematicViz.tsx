@@ -53,7 +53,7 @@ interface CinematicVizProps {
     scenes?: ReadonlyArray<Scene<PipelineState, PipelineState>>;
 }
 
-export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicVizProps) {
+export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: CinematicVizProps) {
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
 
@@ -70,13 +70,17 @@ export default function CinematicViz({ prompt, scenes = ALL_SCENES }: CinematicV
         }
     }, [prompt]);
 
-    // The initial pipeline state seeds Scene 0 with the prompt text.
-    // `useMemo` so the reference is stable across renders when the
-    // prompt hasn't changed — otherwise useSceneRunner resets to
-    // Scene 0 on every parent render.
+    // The initial pipeline state seeds Scene 0 with the prompt text
+    // and the architecture type (chunk 6: Scene 10 branches on this
+    // to label SwiGLU vs GELU). `useMemo` so the reference is stable
+    // across renders when the prompt hasn't changed — otherwise
+    // useSceneRunner resets to Scene 0 on every parent render.
     const initialState = useMemo<PipelineState>(
-        () => (prompt ? { promptText: prompt } : {}),
-        [prompt],
+        () =>
+            prompt
+                ? { promptText: prompt, architectureType: model?.architecture_type ?? null }
+                : {},
+        [prompt, model?.architecture_type],
     );
 
     const { state, controls } = useSceneRunner({

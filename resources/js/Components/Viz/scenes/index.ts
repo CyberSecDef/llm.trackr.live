@@ -8,6 +8,8 @@ import { SCENE_EMBEDDING_LOOKUP } from '@/Components/Viz/scenes/EmbeddingLookupS
 import { SCENE_POSITIONAL_ENCODING } from '@/Components/Viz/scenes/PositionalEncodingScene';
 import { SCENE_LAYER_NORM } from '@/Components/Viz/scenes/LayerNormScene';
 import { SCENE_ATTENTION } from '@/Components/Viz/scenes/AttentionScene';
+import { SCENE_RESIDUAL_1, SCENE_RESIDUAL_2 } from '@/Components/Viz/scenes/ResidualScene';
+import { SCENE_FFN } from '@/Components/Viz/scenes/FFNScene';
 
 /*
  * ALL_SCENES (M13 chunk 3+) — the ordered scene registry the
@@ -15,8 +17,8 @@ import { SCENE_ATTENTION } from '@/Components/Viz/scenes/AttentionScene';
  *   - chunk 3b: scenes 0, 1, 2
  *   - chunk 3c: scenes 3, 4
  *   - chunk 4:  scenes 5, 6, 7
- *   - chunk 5:  scene 8 (this commit)
- *   - chunk 6:  scenes 9, 10, 11
+ *   - chunk 5:  scene 8
+ *   - chunk 6:  scenes 9, 10, 11 (this commit)
  *   - chunk 7:  scene 12
  *   - chunk 8:  scenes 13, 14, 15, 16, 17
  *   - chunk 9:  scenes 18, 19, 20
@@ -35,6 +37,9 @@ export const ALL_SCENES: ReadonlyArray<Scene<PipelineState, PipelineState>> = [
     SCENE_POSITIONAL_ENCODING, // 6
     SCENE_LAYER_NORM, // 7
     SCENE_ATTENTION, // 8
+    SCENE_RESIDUAL_1, // 9
+    SCENE_FFN, // 10
+    SCENE_RESIDUAL_2, // 11
 ];
 
 export {
@@ -47,4 +52,7 @@ export {
     SCENE_POSITIONAL_ENCODING,
     SCENE_LAYER_NORM,
     SCENE_ATTENTION,
+    SCENE_RESIDUAL_1,
+    SCENE_FFN,
+    SCENE_RESIDUAL_2,
 };

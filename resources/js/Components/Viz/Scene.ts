@@ -144,6 +144,26 @@ export interface PipelineState {
     /** Per-token attention output (Scene 8 / chunk 5 output).
      *  blendValues(qkv.v[], attentionScores) per row. */
     attentionOutput?: readonly (readonly number[])[];
+    /** Output of the first residual connection (Scene 9 / chunk 6).
+     *  Element-wise `positionEncoded + attentionOutput`. Carries
+     *  the pre-attention information forward through the layer. */
+    residualOutput?: readonly (readonly number[])[];
+    /** Output of the feed-forward network (Scene 10 / chunk 6).
+     *  Expand → non-linearity → contract, applied per-token to
+     *  `residualOutput`. */
+    ffnOutput?: readonly (readonly number[])[];
+    /** Output of the second residual connection (Scene 11 /
+     *  chunk 6). Element-wise `residualOutput + ffnOutput`. This
+     *  is the layer's final output and the input to the next
+     *  layer (or to Scene 13's final-norm in the last layer). */
+    residualOutput2?: readonly (readonly number[])[];
+    /** Model architecture string from `model.architecture_type`,
+     *  propagated through PipelineState so per-scene transforms
+     *  can branch on it without enlarging the Scene contract
+     *  (chunk-6 entry point — chunk 10 may refactor toward a
+     *  richer per-scene model handle). Drives the SwiGLU/GELU
+     *  pick in Scene 10. Null = unknown → GELU default. */
+    architectureType?: string | null;
 }
 
 /**
