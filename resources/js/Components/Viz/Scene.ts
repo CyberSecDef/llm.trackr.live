@@ -198,6 +198,19 @@ export interface PipelineState {
     /** Tokens emitted so far (Scene 17 / chunk 8b output, grows
      *  one token at a time per autoregressive loop iteration). */
     generatedTokens?: readonly { vocabIndex: number; string: string }[];
+    /** Per-iteration data for Scene 18 (chunk 9a). Each entry
+     *  carries the synthesized continuation token + its duration
+     *  inside the scene's t-window. Scene 18's transform()
+     *  appends every iteration's token to `generatedTokens`. */
+    loopIterations?: readonly LoopIterationState[];
+}
+
+export interface LoopIterationState {
+    iterationIndex: number;
+    vocabIndex: number;
+    string: string;
+    durationMs: number;
+    startMs: number;
 }
 
 export interface ProbabilityBar {
