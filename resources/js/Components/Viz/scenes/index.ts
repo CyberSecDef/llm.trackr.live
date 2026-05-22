@@ -17,6 +17,8 @@ import { SCENE_SOFTMAX } from '@/Components/Viz/scenes/SoftmaxScene';
 import { SCENE_SAMPLING } from '@/Components/Viz/scenes/SamplingScene';
 import { SCENE_TOKEN_EMERGE } from '@/Components/Viz/scenes/TokenEmergeScene';
 import { SCENE_AUTOREGRESSIVE_LOOP } from '@/Components/Viz/scenes/AutoregressiveLoopScene';
+import { SCENE_KV_CACHE } from '@/Components/Viz/scenes/KVCacheScene';
+import { SCENE_DETOKENIZE } from '@/Components/Viz/scenes/DetokenizeScene';
 
 /*
  * ALL_SCENES (M13 chunk 3+) — the ordered scene registry the
@@ -29,8 +31,8 @@ import { SCENE_AUTOREGRESSIVE_LOOP } from '@/Components/Viz/scenes/Autoregressiv
  *   - chunk 7:  scene 12
  *   - chunk 8a: scenes 13, 14
  *   - chunk 8b: scenes 15, 16, 17
- *   - chunk 9a: scene 18 (this commit)
- *   - chunk 9b: scenes 19, 20
+ *   - chunk 9a: scene 18
+ *   - chunk 9b: scenes 19, 20 (this commit)
  *
  * Unregistered scene slots fall through to the CinematicViz
  * placeholder ("Scene not yet implemented") — sceneIndex still
@@ -56,6 +58,8 @@ export const ALL_SCENES: ReadonlyArray<Scene<PipelineState, PipelineState>> = [
     SCENE_SAMPLING, // 16
     SCENE_TOKEN_EMERGE, // 17
     SCENE_AUTOREGRESSIVE_LOOP, // 18
+    SCENE_KV_CACHE, // 19
+    SCENE_DETOKENIZE, // 20
 ];
 
 export {
@@ -78,4 +82,6 @@ export {
     SCENE_SAMPLING,
     SCENE_TOKEN_EMERGE,
     SCENE_AUTOREGRESSIVE_LOOP,
+    SCENE_KV_CACHE,
+    SCENE_DETOKENIZE,
 };
