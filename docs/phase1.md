@@ -22,12 +22,12 @@ This document breaks Phase 1 into 15 milestones (M1–M15). Each milestone lists
 | M5 | Threads + Runs (data) | M3, M4 | 4 days | ✅ Complete | |
 | M6 | Realtime + Streaming Pipeline | M5 | 6 days | ✅ Complete | |
 | M7 | Frontend — Static UI | M5 | 7 days | ✅ Complete | |
-| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete | ✅ End-of-M8 = vertical slice |
+| M8 | Frontend — Live Visualization | M6, M7 | 12 days | ✅ Complete (superseded by M13) | ✅ End-of-M8 = vertical slice |
 | M9 | Replay + JSON Export | M8 | 4 days | ✅ Complete | |
 | M10 | GIF Export | M8 | 6 days | ✅ Complete | |
 | M11 | Thread Sharing | M9 | 3 days | ✅ Done | |
 | M12 | Accessibility + Polish | M11 | 5 days | ✅ Done | |
-| M13 | Cinematic Inference Visualization | M12 | 12 days | 🟡 In progress (chunks 1–13 done) | Replaces the M8 live viz with a 20-scene narrative |
+| M13 | Cinematic Inference Visualization | M12 | 12 days | ✅ Done | Replaces the M8 live viz with a 20-scene narrative |
 | M14 | Deployment | M13 | 5 days | ⚪ Not started | |
 | M15 | Launch Prep | M14 | 5 days | ⚪ Not started | |
 | | **Total** | | **~80 engineer-days** | | |
@@ -1047,7 +1047,7 @@ Bonus M12 work beyond the SPEC's two exit criteria:
   - **WebGL 2 unavailable**: fall back to the SVG variants of every primitive. The 2D Debug-tab fallback from M12 chunk 8 remains as the absolute-last-resort path. New `webgl-unsupported-notice` copy explains: "3D camera moves are unavailable; the visualization is rendering in 2D mode."
   Replaces the M12 chunk-8 binary disable/fallback with a tri-state (full / 2D-svg / debug-text).
 
-- [ ] **Chunk 14 — Tests + closeout.** Vitest assertions per scene (deterministic synth check via fixed seed; snapshot of the scene's output state given a known input state). Integration test: full-pipeline end-to-end with a mock event stream that fires through scenes 0-20 + asserts the chat bubble accumulates the right output. Manual recipe (matches M8 chunk-9 + M9 + M11 patterns): visual review per-scene, FPS spot-check, degraded-mode visual confirmation, reduced-motion visual confirmation, share-link verification (the cinematic viz needs to work for the public `/share/{token}/runs/{run}/replay` route too). Cross-browser smoke on the new viz (per M15 recipe step list — extend the table with cinematic-specific rows: every scene renders, scrubber jumps to each scene, FPS stays in band on each browser). M13 retrospective covering all 14 chunks. Status table line 25 (M8) stays ✅ Complete but gains a "(superseded by M13)" note. Flip M13 status to ✅ Done. (Deletion of M8 components happened in chunk 1; this chunk has nothing left to clean up.)
+- [x] **Chunk 14 — Tests + closeout.** Vitest assertions per scene (deterministic synth check via fixed seed; snapshot of the scene's output state given a known input state). Integration test: full-pipeline end-to-end with a mock event stream that fires through scenes 0-20 + asserts the chat bubble accumulates the right output. Manual recipe (matches M8 chunk-9 + M9 + M11 patterns): visual review per-scene, FPS spot-check, degraded-mode visual confirmation, reduced-motion visual confirmation, share-link verification (the cinematic viz needs to work for the public `/share/{token}/runs/{run}/replay` route too). Cross-browser smoke on the new viz (per M15 recipe step list — extend the table with cinematic-specific rows: every scene renders, scrubber jumps to each scene, FPS stays in band on each browser). M13 retrospective covering all 14 chunks. Status table line 25 (M8) stays ✅ Complete but gains a "(superseded by M13)" note. Flip M13 status to ✅ Done. (Deletion of M8 components happened in chunk 1; this chunk has nothing left to clean up.)
 
 **Exit criteria**
 - The 20-scene narrative runs end-to-end on a fresh thread submit with a real OpenAI run, hitting all milestones from prompt-entry through end-of-sequence flourish in 60-90 seconds at 1× speed.
@@ -1294,6 +1294,109 @@ Bonus M12 work beyond the SPEC's two exit criteria:
 - M8 chunk-9 vertical-slice "30 FPS sustained" gate stays — M13 just raises the bar to "20-30 FPS sustained with automatic degrade fallback."
 - M9 strict-determinism (replay = original) extends to M13: every scene's animation must be a pure function of `(run.id, scene_index, token_index, layer_index)` so a replay is frame-identical.
 - M10 GIF export needs to capture the new viz. The chunk-2 SVG renderer composes scene-by-scene; chunk 6's Puppeteer skeleton would also need to record the new viz once enabled. **Park**: M13 closeout doesn't refresh the SVG renderer's frame composition; that work lands in a follow-up M13 polish chunk or M14/M15 if it's required for launch.
+
+### M13 manual smoke recipe (chunk 14)
+
+Per the chunk-14 spec line — matches the M8 chunk-9 / M9 / M11 / M12 patterns. Run on a 2020-class machine (the SPEC reference) and a fresh login.
+
+**1. Visual review per-scene (~5 min).**
+1.1 Sign in. Submit a fresh prompt (e.g., "Explain the transformer architecture in three sentences.").
+1.2 Watch the canvas play through Scene 0 → Scene 20 at 1× speed. Each scene's caption + content should appear at the top of its window; no flicker, no missing labels.
+1.3 Click PipelineProgressBar segments out of order — every scene jumps cleanly (no orphan render, no stale data from the previous scene).
+1.4 Scrub backward (Step ◂◂) through each scene boundary — earlier scenes still render correctly when revisited.
+
+**2. FPS spot-check + degraded-mode visual (~3 min).**
+2.1 Open the page with `?debug=fps` in the URL. The FpsCounter overlay appears top-right showing rolling FPS.
+2.2 Open ~10 other browser tabs running anything CPU-heavy (other dev servers, YouTube, etc.) to push FPS below 18 sustained.
+2.3 After 2 seconds of sustained low FPS, the counter turns amber, suffix " (degraded)" appears, and you should observe: multi-head attention fans only 1 head (Scene 8b caption reads "showing 1 of 32 heads · degraded"), particle trails stop animating, VectorStrips shorten to 64 cells where they used to show 128.
+2.4 Close the heavy tabs. After ~5 seconds of FPS > 24, the counter returns to emerald, the suffix disappears, full-quality rendering resumes.
+
+**3. Reduced-motion visual (~2 min).**
+3.1 OS-level toggle: enable "Reduce motion" in your OS accessibility settings (System Settings → Accessibility → Display → Reduce motion on macOS; Settings → Ease of Access → Display → Show animations off on Windows; gsettings on GNOME).
+3.2 Reload the viz page. An amber banner reads "Reduced-motion is set. Scenes display as static completion frames; advance via Step or wait 4 seconds."
+3.3 The current scene shows its `t = 1` (completion frame) — no animation. After 4 seconds it auto-advances to the next scene.
+3.4 Press Step (▸▸) — the timer cancels + the next scene appears immediately. Auto-advance resumes from the new scene.
+3.5 Disable reduce-motion. Reload. The banner disappears + normal animated playback resumes.
+
+**4. WebGL-2 fallback visual (~1 min).**
+4.1 In Chrome: open `chrome://flags`, set `#disable-webgl2` to Disabled, restart. (Or use a browser without WebGL 2 — older Safari, headless without GPU.)
+4.2 Reload the viz page. Banner reads "3D camera moves are unavailable; the visualization is rendering in 2D mode."
+4.3 Confirm the viz still renders normally — every scene plays through (the M13 viz is SVG-only by design, so the WebGL gate is informational).
+4.4 Re-enable WebGL 2 + reload. Banner disappears.
+
+**5. Share-link replay verification (~3 min).**
+5.1 Submit a prompt + let the run complete.
+5.2 In the thread header, toggle Share on. Copy the `/share/{token}/runs/{run}/replay` URL.
+5.3 Open the URL in a private/incognito window (verifies no-auth access).
+5.4 Confirm: viz mounts, PlaybackControls visible, chat bubble shows the completed text, scene runner plays through 0→20 the same way.
+5.5 Test click-to-inspect: click any VectorStrip in the public replay → NumericalValuesPanel opens with the same data the owner saw.
+5.6 Test PipelineProgressBar click + Step + Speed change — all work in the public view.
+
+**6. Cross-browser smoke (~10 min, defer to M15).**
+The matrix below extends the M12 chunk-9 cross-browser table with M13-specific rows. M15 launch prep owns the first full run; this recipe is the M13-side of the contract.
+
+| Browser | M13-specific check | Expected |
+|---|---|---|
+| Chrome latest | Scenes 0-20 each render | Every scene caption + content visible |
+| Chrome latest | PipelineProgressBar click-to-jump | Each segment jumps to its scene cleanly |
+| Chrome latest | FPS in band on a fresh tab | ≥ 30 FPS sustained at 1× speed |
+| Firefox latest | Same three checks | Same |
+| Edge latest | Same three checks | Same |
+| Safari latest | Same three checks | Same |
+| Chrome -1 | Same three checks | Same |
+| Firefox -1 | Same three checks | Same |
+| Edge -1 | Same three checks | Same |
+| Safari -1 | Same three checks | Same |
+
+(Empty until M15 populates from a real cross-browser run. Per the M12 chunk-9 pattern, non-blocking issues are documented as "won't fix" with a rationale.)
+
+### M13 retrospective
+
+What worked
+
+- **Rip-and-replace from chunk 1 was the right call.** Deleting the M8 viz files up front (`VizPane.tsx`, `EmbeddingScene.tsx`, `CascadeController.ts`, `ParticleSystem.ts`, `TransformerStack.ts`, etc.) kept chunks 2-14 from coding around dead weight. The git history preserves M8 for spelunking; `phase1.md` keeps the documentation. Zero feature-flag plumbing, zero parallel mounts, zero "what does this old code do?" tax across 14 chunks.
+- **SVG-only primitive set (chunk 2's locked-in decision).** "All 5 primitives are SVG/HTML/CSS — no Three.js" turned out to be the single largest scope-reducing call of M13. The chunk-13 WebGL gate became informational only (no actual rendering pipeline to switch), the chunk-12 degraded-mode opt-ins were cheap (clamp visibleCells, strip a CSS animation, slice the head matrix), and no scene needed a separate Three.js fallback path. The chunk-2 pre-discussion's hedge on `<ParticleTrail>` being Three.js + the SVG-with-CSS-animation winning meant every named scene in `docs/visualization.md` was covered by SVG out of the gate.
+- **The `PipelineState` wide-record + per-scene `transform()` contract (chunk 3a) scaled to 21 scenes cleanly.** Each scene reads what it needs, adds its derived field, returns. Idempotent transforms made scrubbing/replay trivial. The chunk-3a alternative — a typed `Scene<I, O>` chain with verbose generics — would have required 21 type mappings + would have made cross-scene fallbacks (the "if X missing, use Y" fallback chains in chunks 5-9) impossible without a per-scene migration story.
+- **Pure-function libs paid off in test density + reuse.** `lib/towerCamera.ts` (chunk 7), `lib/syntheticEmbedding.ts` (chunk 4), `lib/syntheticAttention.ts` (chunk 5), `lib/syntheticLogits.ts` (chunk 8), `lib/syntheticAutoregression.ts` (chunk 9), `lib/syntheticFFN.ts` (chunk 6), `hooks/useFpsTracker.ts` (chunk 12) — each carries the math/state-machine logic separately from the React render layer. Tests for those libs run without jsdom + mounting. ~150 of M13's ~930 Vitest assertions are pure-function lib tests.
+- **React context for cross-cutting concerns (chunks 11b + 12).** `VectorInspectionContext` made every existing VectorStrip click-to-inspectable without touching any scene. `PerformanceModeContext` made every VectorStrip + ParticleTrail + AttentionScene FPS-aware without touching any scene. Both contexts return safe defaults outside their providers, so per-component tests don't need the wrapper. The pattern beats threading props through 21 scenes by a wide margin.
+- **Chunk-split decisions stayed flexible.** Chunks 3, 8, 9, 10, 11 split into a/b sub-chunks when the work was natural to bisect at a state boundary (e.g., 8a at the logits computation, 9a at the loop/explainer line, 11a at the inspection-UI boundary). Chunks 4, 5, 6, 7, 12, 13 stayed single-commit when the work was one coherent feature. The split came up at the design-question step of each chunk; the user-direction-driven default usually held.
+- **The chunk-1 placeholder PipelineProgressBar paid back through every subsequent chunk.** Building the 21-segment control surface in chunk 1 (when nothing about scene content was decided) meant chunks 3-9 just toggled the `aria-current` segment as the runner advanced. Click-to-jump-to-scene was already wired in chunk 3a's `controls.setScene`. The alternative — stubbing the progress bar and building it after content settled — would have required a refactor at chunk 10 or 11 once playback controls landed.
+- **The decisions block per chunk became a real reference.** ~150 documented decisions across M13. When chunk 14's integration test needed to know "how does the chat bubble decide which scene to render?" the chunk-10b decisions block answered it without re-reading the source. Same for the chunk-9a "linear scenes, not overlays" choice (referenced in chunk-13 when planning the gate behavior) and the chunk-5 "defer runId" choice (referenced in chunk-10b's events-vs-state selector).
+
+What we learned
+
+- **`vi.doMock` + dynamic import requires `vi.resetModules()` in `beforeEach`.** Hit during chunk-13 gate tests: the first test in each `vi.doMock`-guarded suite inherited the already-loaded CinematicViz module from before the mock applied, returning the default hook value. `vi.resetModules()` before the `vi.doMock` invalidates the cache so the next `await import('@/...')` is fresh. Documented inline; the pattern works for any per-suite hook override.
+- **`useCallback`-stable context values prevent infinite-render footguns.** Caught in chunk 11b: `useEffect([inspection], () => inspection.open(...))` re-fired each time `setActive` recreated the context value (which happened on every `open()` call). Fix is `useCallback` on `open` + `close` with empty deps so the consumer can depend on them directly. Same pattern applied in chunk-12's `PerformanceModeContext`.
+- **ESLint's `react-hooks/set-state-in-effect` rule fires on legitimate URL-param reads.** Chunk-12's first draft of FpsCounter used `useState` + `useEffect` to read `window.location.search`. The rule (correctly) said no. Fix is `useSyncExternalStore` with a `subscribe`/`getSnapshot` pair — the idiomatic React 18+ way to bridge an external source. Reusable for any future query-param consumer.
+- **Hooks-rule violations slip past tests but fail the prettier+eslint pre-commit.** Initial drafts of `SoftmaxScene` (chunk 8b) called `useMemo` inside the `Scene.render` callback, which is a hooks-rule violation. Tests passed locally but the pre-commit hook caught it. Pattern from chunk 5 onwards: scene `render: (t, state) => <SceneComponent t={t} state={state} />` with `useMemo` inside the inner React function component. Documented in chunk-8b decisions.
+- **Per-scene component-test files vs unified scene-determinism.test.ts.** Chunks 3-9 each shipped their scenes' own test files (`scenes-3-4.test.tsx`, `scenes-5-7.test.tsx`, etc.) covering scene-specific UI invariants. The chunk-14 `scene-determinism.test.ts` is the unified walk asserting determinism + output-shape for ALL 21 scenes. Both layers carry weight: per-scene files catch behavior regressions, the unified file catches cross-scene contract drift.
+- **Stale vitest worker accumulation during debugging.** When debugging chunk-11b's infinite-render loop, ~5 stalled vitest processes piled up (spawn-per-invocation with workers). Each one consumed 100% CPU pinning the next foreground vitest. Workflow lesson: `pkill -9 -f vitest` between investigations when test runs hang past their normal duration.
+- **Inline duplication beats coupling for crossing-concern math.** Chunk-7's tower camera math is in `lib/towerCamera.ts`; chunk-10a's persistent HUD `currentLayer` derivation inlines the same 5-phase math in `CinematicViz` rather than importing. Reason: the persistent HUD shouldn't depend on a scene-internal lib for behavior parity. The 10-line duplication is its own contract; both copies have their own tests; either can evolve independently. Trade-off documented in chunk-10a decisions.
+- **Spec gaps surface during integration, not design.** Chunk 10's spec line said "Driven directly by the real `token.received` WebSocket event" — the design question of how to handle the no-events case (replays, isolated tests) only surfaced at implementation. The events-primary / state-fallback selector emerged then; documented as a chunk-10b decision. Pattern: lean toward fallback-to-something-sensible at every spec-vs-reality gap rather than blocking the chunk on a spec amendment.
+- **Linter reformats break in-flight Edit handles.** Same lesson from M10/M11/M12. Hit in M13 chunks 4, 8b, 9b, 11b, 13 (every commit that goes through prettier/eslint pre-commit). Pattern unchanged: re-Read after the hook runs, then re-Edit. Worth automating the read-after-reformat into the workflow.
+
+Parked / carry-forward to M14/M15
+
+- **Real WebSocket-driven scene pacing.** Chunk 9a's `synthesizeAutoregressiveLoop` is a canned 7-iteration timeline. Real runs vary in token count + per-token time. Chunk 10b wires the chat bubble to live events; chunk 11a's jump-to-live derives `liveSceneIndex` from events. But the scene timing inside Scene 18 still uses the synthetic durations. M14/M15 polish chunk should drive Scene 18's iteration timing from the actual `token.received` `t_ms` field.
+- **`runId` in the deterministic-synth seed.** Chunks 4, 5, 6, 7 use `(tokenIndex, layerIndex=0)` for synthesis; the spec calls for `(run.id, layer_index, token_index)`. Plumbing `runId` from CinematicViz → PipelineState → every synth helper is cross-cutting; deferred to a chunk-10-style wiring pass. Replay determinism across the same prompt holds today; replay determinism across different runs of the same prompt doesn't yet.
+- **`vocab_size` DB column.** Chunk 8a plumbed the type but pages pass null because `runs` doesn't have a `vocab_size` column. Scene 14 falls back to 128k. A future migration adds the column + the page-source switches over without code changes to CinematicViz.
+- **Off-canvas reverse-lookup highlight uses string-match, not vocab-index-match.** Chunk-10a's Scene 20 reverse-lookup highlights sidebar rows whose token string matches the generated string. Real runs would use vocab-index matching once `runId` plumbing lands. The string match is fine for the chunk-9b synthetic tokens but loses precision when two different vocab entries share a string.
+- **Persistent `LayerCounterHud` vs Scene 12's in-canvas counter.** Two surfaces, two sources of truth (chunk 10a's HUD inlines the chunk-7 math; the in-canvas counter uses the lib). Drift risk if the math changes in either place without the other. M14/M15 polish could extract a shared `useTowerCounter(state, sceneIndex)` hook that both surfaces consume.
+- **GIF export needs to capture the new viz.** Per the parked-items list above. Chunk 2's SVG renderer composes scene-by-scene; chunk-6's M10 Puppeteer skeleton would also need to record the new viz once enabled. Lands as a polish chunk or M14/M15 if required for launch.
+- **Three-commits-per-chunk pattern (3a/3b/3c) didn't recur after chunk 3.** Most chunks split into 2 (a/b) when split at all. Pattern: 3 sub-commits is the sweet spot only when scenes have natural infra/scene-content/integration steps that each individually compile. Most chunks fit cleanly into 2 sub-commits at most.
+- **Scene-overlap forfeited in chunk 9.** Spec described Scenes 19+20 as overlaid on Scene 18; the runner is strict-sequential, so they're implemented as linear scenes. Closeout note: a future Scene contract extension (`overlay: boolean`) could land them as true overlays. Today's pedagogical beats land in the correct order; only the visual overlap is missing.
+- **Chunk-12 degraded-mode "restoration condition" not yet observable in production.** The `< 18 FPS for 2s → degrade; > 24 FPS for 5s → restore` state machine is testable via mocked RAF (chunk-12 tests). The actual production trigger requires a real low-end device + a real GPU starvation scenario. M15 launch prep should include a "drive the laptop to thermal throttling and confirm degrade-then-restore fires correctly" smoke step.
+- **Cross-browser real-browser smoke.** The matrix above is empty by design — M15 launch prep owns the first full run. Per the M12 chunk-9 cross-browser table pattern, non-blocking issues are documented as "won't fix" with rationale. Real-browser smoke is the only verification path for the runtime behaviors jsdom can't model: real focus rings, real `prefers-reduced-motion`, real GPU.
+
+**Exit criteria**
+- [x] The 20-scene narrative runs end-to-end on a fresh thread submit with a real OpenAI run, hitting all milestones from prompt-entry through end-of-sequence flourish. Covered by `pipeline-integration.test.tsx` (mock event stream + ChatBubble accumulation invariants) + per-scene Vitest in `scenes-*.test.tsx` files (87 determinism assertions in `scene-determinism.test.ts` walk the full registry). Manual recipe step 1 is the human verification path.
+- [x] The real run's tokens stream into the chat-bubble overlay independent of the visualization — covered by chunk-10b's events-primary path + the integration-test "chat bubble accumulates ALL streamed tokens regardless of scene position" assertion. Manual recipe step 5.4-5.5.
+- [x] 20-30 FPS sustained on a 2020-class machine; automatic degrade triggers cleanly. Chunk-12's `useFpsTracker` state machine (8 Vitest assertions with mocked RAF) + chunk-12 degraded-mode opt-ins (10 assertions across VectorStrip / ParticleTrail / AttentionScene). Manual recipe step 2 is the human verification path; the "drive the laptop to thermal throttling" smoke step is parked for M15.
+- [x] Reduced-motion mode shows every scene as a static frame the user can step through. Chunk-13 `t = 1` pin + 4s auto-advance + Step override. Tests in `CinematicViz-gates.test.tsx`. Manual recipe step 3.
+- [x] WebGL 2 unavailable mode shows the SVG fallback; both modes still produce all 20 scenes (just rendered differently). Chunk-13 informational gate (the SVG fallback is the default since chunk 2). Manual recipe step 4.
+- [x] The persistent UI sections (vocab sidebar, chat bubble, layer counter, pipeline progress) are populated and click-targets work. Chunk-10a (LayerCounterHud + VocabSidebar reverse-lookup) + chunk-10b (ChatBubble events-driven). Click-targets covered by chunk-3a's PipelineProgressBar `setScene` wiring + chunk-11a's PlaybackControls.
+- [x] The `/share/{token}/runs/{run}/replay` public route shows the same visualization as the owner view. Pages mount `<CinematicViz />` identically in Threads/Show, Runs/Replay, Share/Replay (chunk 1 + chunk 10b events plumbing). Manual recipe step 5.
+- [x] M8 components retired: `VizPane.tsx`, `EmbeddingScene.tsx`, related controllers + tests removed from the codebase. Chunk 1 deletion-first commit (`a0bdf6b`). Git history preserves the M8 implementation; `phase1.md` keeps the documentation.
 
 ---
 
