@@ -1,36 +1,58 @@
+import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { BpeToken } from '@/lib/tokenizer';
 
 /*
- * VocabSidebar (M13 chunk 3c) — left-edge persistent UI section.
+ * VocabSidebar (M13 chunk 3c + chunk 10) — left-edge persistent UI
+ * section showing the (id, string) list of tokens.
  *
- * Chunk 1 was a placeholder. Chunk 3c wires in the live token
- * data: as Scene 3 reveals tokens (one per BPE step) the sidebar
- * shows the running list. The currently-being-revealed token is
- * highlighted in cyan.
+ * Chunk 3c populated tokens during Scene 3's BPE animation.
+ * Chunk 10 adds the chunk-20 reverse-lookup affordance:
+ * `highlightTokenIndex` rings + scrolls the matching row into view.
  *
- * Per `docs/visualization.md`: "vocabulary sidebar (left) — scrolling
- * list of (id, string) pairs … highlight + scroll-into-view on
- * lookup events from Scene 3."
+ * Two highlight modes coexist:
+ *   - The "most-recently-revealed" highlight (auto-derived from
+ *     `revealedCount - 1`) marks where forward tokenization is
+ *     currently. Used during Scene 3.
+ *   - The explicit `highlightTokenIndex` overrides that for the
+ *     Scene 20 reverse-lookup beat. When set, that row gets the
+ *     cyan ring + a smooth scrollIntoView.
  *
- * Implementation: takes a `tokens` + `revealedCount` prop. Tokens
- * up to `revealedCount` are visible; the most recently revealed
- * (index `revealedCount - 1`) is highlighted with a cyan ring.
- * Chunk 11 will wire scrollIntoView() as a follow-up; for now we
- * use `max-h-[400px] overflow-y-auto` to keep the list scrollable
- * even when filled.
+ * Per `phase1.md:1031`: "Highlight + scroll-into-view on lookup
+ * events from Scene 3 (forward) + Scene 20 (reverse)."
  */
 
 export interface VocabSidebarProps {
     /** All tokens revealed so far. Empty until Scene 3 runs. */
     tokens?: readonly BpeToken[];
     /** How many of `tokens` are visible. The (revealedCount - 1)
-     *  index is highlighted as the "most recent lookup." */
+     *  index is the implicit highlight (Scene 3's forward beat). */
     revealedCount?: number;
+    /** Explicit highlight override for the Scene 20 reverse-lookup
+     *  beat. Indexes into `tokens` (NOT into the visible slice). */
+    highlightTokenIndex?: number | null;
 }
 
-export default function VocabSidebar({ tokens = [], revealedCount = 0 }: VocabSidebarProps) {
+export default function VocabSidebar({
+    tokens = [],
+    revealedCount = 0,
+    highlightTokenIndex = null,
+}: VocabSidebarProps) {
     const visible = tokens.slice(0, revealedCount);
+    const listRef = useRef<HTMLUListElement>(null);
+
+    // Smooth scrollIntoView when the highlight changes, per the
+    // spec's "scroll-into-view on lookup events." `block: 'nearest'`
+    // avoids the page-level jump that the default behaviour can
+    // trigger; only the sidebar's own scroll container moves.
+    useEffect(() => {
+        if (highlightTokenIndex === null || highlightTokenIndex < 0) return;
+        if (!listRef.current) return;
+        const target = listRef.current.querySelector(`[data-vocab-index="${highlightTokenIndex}"]`);
+        if (target instanceof HTMLElement) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [highlightTokenIndex]);
 
     return (
         <aside
@@ -46,22 +68,32 @@ export default function VocabSidebar({ tokens = [], revealedCount = 0 }: VocabSi
                 </p>
             ) : (
                 <ul
+                    ref={listRef}
                     className="mt-2 max-h-[360px] space-y-0.5 overflow-y-auto"
                     data-testid="viz-vocab-list"
                 >
                     {visible.map((tok, i) => {
-                        const isRecent = i === visible.length - 1;
+                        const isMostRecent = i === visible.length - 1;
+                        const isReverseHighlight =
+                            highlightTokenIndex !== null && i === highlightTokenIndex;
+                        // Reverse-lookup highlight takes precedence over the
+                        // forward "most-recent" marker when both could apply.
+                        const showHighlight = isReverseHighlight || isMostRecent;
                         return (
                             <li
                                 key={i}
                                 className={cn(
                                     'flex items-center justify-between gap-2 rounded px-1.5 py-0.5 font-mono',
-                                    isRecent
-                                        ? 'bg-cyan-950/40 text-cyan-200 ring-1 ring-cyan-700'
+                                    showHighlight
+                                        ? isReverseHighlight
+                                            ? 'bg-emerald-950/40 text-emerald-200 ring-1 ring-emerald-600'
+                                            : 'bg-cyan-950/40 text-cyan-200 ring-1 ring-cyan-700'
                                         : 'text-muted-foreground/90',
                                 )}
                                 data-testid={`viz-vocab-row-${i}`}
-                                data-recent={isRecent ? 'true' : 'false'}
+                                data-vocab-index={i}
+                                data-recent={isMostRecent ? 'true' : 'false'}
+                                data-reverse-highlight={isReverseHighlight ? 'true' : 'false'}
                             >
                                 <span className="truncate" title={tok.string}>
                                     {tok.string === ' '

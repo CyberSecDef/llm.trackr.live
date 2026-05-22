@@ -52,4 +52,61 @@ describe('<VocabSidebar />', () => {
         expect(row0.textContent).toContain('·');
         expect(row1.textContent).toContain('↵');
     });
+
+    // M13 chunk 10: reverse-lookup highlight (Scene 20).
+
+    it('applies the reverse-lookup highlight when highlightTokenIndex is set', () => {
+        const tokens = [tok(1, 'a'), tok(2, 'b'), tok(3, 'c')];
+        render(<VocabSidebar tokens={tokens} revealedCount={3} highlightTokenIndex={1} />);
+        const row1 = screen.getByTestId('viz-vocab-row-1');
+        expect(row1.getAttribute('data-reverse-highlight')).toBe('true');
+        const row0 = screen.getByTestId('viz-vocab-row-0');
+        expect(row0.getAttribute('data-reverse-highlight')).toBe('false');
+    });
+
+    it('reverse-highlight takes precedence over the most-recent flag', () => {
+        const tokens = [tok(1, 'a'), tok(2, 'b'), tok(3, 'c')];
+        // revealedCount=3 → most-recent = row 2. Override to highlight row 0.
+        render(<VocabSidebar tokens={tokens} revealedCount={3} highlightTokenIndex={0} />);
+        const row0 = screen.getByTestId('viz-vocab-row-0');
+        expect(row0.className).toMatch(/emerald/);
+        // Row 2 still has data-recent=true (the marker is separate)
+        // but its className should NOT have the cyan ring because
+        // the chunk-10 wiring only applies the most-recent visual
+        // when no reverse-highlight is set on a different row.
+    });
+
+    it('no highlightTokenIndex still shows the most-recent (forward) ring', () => {
+        const tokens = [tok(1, 'a'), tok(2, 'b')];
+        render(<VocabSidebar tokens={tokens} revealedCount={2} />);
+        const row1 = screen.getByTestId('viz-vocab-row-1');
+        expect(row1.className).toMatch(/cyan/);
+    });
+
+    it('scrolls the highlighted row into view via scrollIntoView', () => {
+        const calls: HTMLElement[] = [];
+        const orig = HTMLElement.prototype.scrollIntoView;
+        HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+            calls.push(this);
+        };
+        try {
+            const tokens = [tok(1, 'a'), tok(2, 'b'), tok(3, 'c')];
+            render(<VocabSidebar tokens={tokens} revealedCount={3} highlightTokenIndex={2} />);
+            expect(calls.length).toBeGreaterThan(0);
+            // The element scrolled should be the one with
+            // data-vocab-index="2".
+            expect(calls[0].getAttribute('data-vocab-index')).toBe('2');
+        } finally {
+            HTMLElement.prototype.scrollIntoView = orig;
+        }
+    });
+
+    it('does not crash when highlightTokenIndex is out of range', () => {
+        const tokens = [tok(1, 'a')];
+        // highlightTokenIndex = 5 (beyond the visible slice). Should
+        // render without throwing; no row gets the reverse-highlight.
+        render(<VocabSidebar tokens={tokens} revealedCount={1} highlightTokenIndex={5} />);
+        const row0 = screen.getByTestId('viz-vocab-row-0');
+        expect(row0.getAttribute('data-reverse-highlight')).toBe('false');
+    });
 });

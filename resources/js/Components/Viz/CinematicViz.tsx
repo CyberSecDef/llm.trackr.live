@@ -126,6 +126,69 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
         return Math.min(vocabTokens.length, Math.floor(state.t * vocabTokens.length) + 1);
     })();
 
+    // M13 chunk 10: Scene 20 reverse-lookup highlight. Scene 20's
+    // detokenize beat walks through generatedTokens; map the active
+    // index back to a vocab-sidebar row via string match. When the
+    // generated string matches a sidebar token, that row rings.
+    // Outside Scene 20, no override (the chunk-3c "most-recent" tag
+    // applies).
+    const vocabHighlight = (() => {
+        if (state.sceneId !== 'detokenize') return null;
+        const generated = state.pipelineState.generatedTokens ?? [];
+        if (generated.length === 0) return null;
+        const REVEAL_PHASE_END = 0.75; // mirrors DetokenizeScene
+        if (state.t >= REVEAL_PHASE_END) return null;
+        const activeIdx = Math.min(
+            generated.length - 1,
+            Math.floor((state.t / REVEAL_PHASE_END) * generated.length),
+        );
+        const targetString = generated[activeIdx].string;
+        // First sidebar row whose string matches; null if none.
+        const row = vocabTokens.findIndex((t) => t.string === targetString);
+        return row >= 0 ? row : null;
+    })();
+
+    // M13 chunk 10: LayerCounterHud visibility + values. Visible
+    // during scenes 5-12 (the per-layer + tower scenes); hidden on
+    // tokenization (0-4) + output (13-20). currentLayer defaults to
+    // 1 during scenes 5-11 (single-layer view); Scene 12's tower
+    // ramps it 1→N via the same towerCamera math the in-canvas
+    // counter uses.
+    const totalLayersValue = state.pipelineState.totalLayers ?? 32;
+    const layerCounterVisible = state.sceneIndex >= 5 && state.sceneIndex <= 12;
+    const currentLayerValue = (() => {
+        if (!layerCounterVisible) return null;
+        if (state.sceneId === 'layer-stack') {
+            // Mirror towerCamera.counterValue without re-importing
+            // the lib (it's already imported by the Scene 12 module).
+            // The HUD value matches the in-canvas counter exactly.
+            const N = totalLayersValue;
+            const t = state.t;
+            const PHASE_REVEAL_END = 0.1;
+            const PHASE_FOLLOW_END = 0.2;
+            const PHASE_BLUR_END = 0.5;
+            const PHASE_SLOW_END = 0.8;
+            let packetFloor: number;
+            if (t < PHASE_REVEAL_END) packetFloor = 1;
+            else if (t < PHASE_FOLLOW_END) {
+                const p = (t - PHASE_REVEAL_END) / (PHASE_FOLLOW_END - PHASE_REVEAL_END);
+                packetFloor = 1 + p;
+            } else if (t < PHASE_BLUR_END) {
+                const p = (t - PHASE_FOLLOW_END) / (PHASE_BLUR_END - PHASE_FOLLOW_END);
+                const eased = 1 - (1 - p) * (1 - p);
+                const top = Math.max(2, N - 2);
+                packetFloor = 2 + eased * (top - 2);
+            } else if (t < PHASE_SLOW_END) {
+                const p = (t - PHASE_BLUR_END) / (PHASE_SLOW_END - PHASE_BLUR_END);
+                const top = Math.max(2, N - 2);
+                packetFloor = top + p * (N - top);
+            } else packetFloor = N;
+            return Math.max(1, Math.round(packetFloor));
+        }
+        // Scenes 5-11: a single representative layer.
+        return 1;
+    })();
+
     return (
         <Card data-testid="cinematic-viz">
             <CardContent className="space-y-2 p-2">
@@ -138,11 +201,19 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
                 />
 
                 <div className="flex min-h-[400px] gap-2">
-                    <VocabSidebar tokens={vocabTokens} revealedCount={vocabRevealedCount} />
+                    <VocabSidebar
+                        tokens={vocabTokens}
+                        revealedCount={vocabRevealedCount}
+                        highlightTokenIndex={vocabHighlight}
+                    />
 
                     <div className="relative flex-1 overflow-hidden rounded-md border border-border bg-slate-950">
                         <div className="absolute top-2 right-2 z-10">
-                            <LayerCounterHud />
+                            <LayerCounterHud
+                                currentLayer={currentLayerValue}
+                                totalLayers={layerCounterVisible ? totalLayersValue : null}
+                                visible={layerCounterVisible}
+                            />
                         </div>
 
                         {gateMessage && (
