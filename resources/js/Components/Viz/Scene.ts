@@ -169,6 +169,17 @@ export interface PipelineState {
      *  layer-counter HUD know the tower height. Null = unknown
      *  → Scene 12 defaults to 32 (Llama-7B / GPT-3.5 class). */
     totalLayers?: number | null;
+    /** Final layer norm output (Scene 13 / chunk 8a). Brief
+     *  squish of `residualOutput2` before the LM head. */
+    finalNormed?: readonly (readonly number[])[];
+    /** Vocabulary size for the LM head (Scene 14 / chunk 8a).
+     *  Sourced from `model.vocab_size` when available; null →
+     *  Scene 14 defaults to 128,000 (Llama-3 class). */
+    vocabSize?: number | null;
+    /** Synthesized logits row for the last token (Scene 14 /
+     *  chunk 8a output). Length = `vocabSize`; mostly cool
+     *  values with a handful of injected hot spikes. */
+    logits?: readonly number[];
 }
 
 /**

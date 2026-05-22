@@ -46,6 +46,11 @@ interface CinematicVizProps {
         attention_heads: number | null;
         context_length: number | null;
         architecture_type: string | null;
+        /** Vocab size for the LM head label in Scene 14. Not in
+         *  the DB schema yet — pages currently pass null and
+         *  Scene 14 defaults to 128,000 (chunk 8a). A future
+         *  migration may add `runs.vocab_size`. */
+        vocab_size?: number | null;
     } | null;
     /** The active run's prompt text. `null` means no run yet — idle screen. */
     prompt?: string | null;
@@ -82,9 +87,10 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
                       promptText: prompt,
                       architectureType: model?.architecture_type ?? null,
                       totalLayers: model?.layers ?? null,
+                      vocabSize: model?.vocab_size ?? null,
                   }
                 : {},
-        [prompt, model?.architecture_type, model?.layers],
+        [prompt, model?.architecture_type, model?.layers, model?.vocab_size],
     );
 
     const { state, controls } = useSceneRunner({
