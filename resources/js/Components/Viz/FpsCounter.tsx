@@ -1,53 +1,61 @@
-import { useEffect, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
+import { usePerformanceMode } from '@/Components/Viz/PerformanceModeContext';
 
-/**
- * FpsCounter (M8 chunk 1) — dev-only overlay showing the viz's
- * frame rate. Rendered absolute-positioned by VizPane.
+/*
+ * FpsCounter (M8 chunk 4 + M13 chunk 12) — small overlay showing
+ * the viz's frame rate and the degraded-mode flag.
  *
- * Updates ~4× per second from a rolling 30-frame window so the
- * number doesn't twitch on every frame. Hidden in production
- * builds via `import.meta.env.DEV`.
+ * Chunk-12 changes:
+ *   - Reads FPS + degraded from `usePerformanceMode()`, not from its
+ *     own RAF loop. The state machine lives in `useFpsTracker`
+ *     (mounted by CinematicViz); this component is a pure display.
+ *   - Visible when EITHER `import.meta.env.DEV` is true OR the URL
+ *     has `?debug=fps`. Production users don't see it by default;
+ *     the query-param exposes it for on-prod perf checks without
+ *     baking debug UI into shipped pages.
+ *   - Adds a "(degraded)" suffix when the degraded flag is true.
+ *     Helps spot the state machine flipping during testing.
  */
 
+function getSnapshot(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+        return new URLSearchParams(window.location.search).get('debug') === 'fps';
+    } catch {
+        return false;
+    }
+}
+
+function getServerSnapshot(): boolean {
+    return false; // SSR has no URL params from window.location
+}
+
+function subscribe(callback: () => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+    // popstate fires on history nav; not perfect (query-only changes
+    // don't fire it) but the URL is set at page load in this app so
+    // the snapshot lookup at mount is what matters.
+    window.addEventListener('popstate', callback);
+    return () => window.removeEventListener('popstate', callback);
+}
+
 export default function FpsCounter() {
-    const [fps, setFps] = useState(0);
-    const frameTimesRef = useRef<number[]>([]);
-    const rafRef = useRef<number | null>(null);
+    const { fps, degraded } = usePerformanceMode();
+    const debugQuery = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-    useEffect(() => {
-        if (!import.meta.env.DEV) return;
-
-        let lastUpdate = performance.now();
-        const tick = (now: number) => {
-            const times = frameTimesRef.current;
-            times.push(now);
-            // Keep only the last 30 frames for the rolling average.
-            if (times.length > 30) times.shift();
-
-            // Update the displayed value at most every 250ms.
-            if (now - lastUpdate > 250 && times.length > 1) {
-                const span = times[times.length - 1] - times[0];
-                setFps(Math.round((times.length - 1) / (span / 1000)));
-                lastUpdate = now;
-            }
-            rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
-
-        return () => {
-            if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-        };
-    }, []);
-
-    if (!import.meta.env.DEV) return null;
+    const visible = import.meta.env.DEV || debugQuery;
+    if (!visible) return null;
 
     return (
         <div
-            className="absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300"
+            className={`absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] ${
+                degraded ? 'text-amber-300' : 'text-emerald-300'
+            }`}
             data-testid="fps-counter"
+            data-degraded={degraded ? 'true' : 'false'}
             aria-hidden="true"
         >
-            {fps} fps
+            {fps} fps{degraded ? ' (degraded)' : ''}
         </div>
     );
 }

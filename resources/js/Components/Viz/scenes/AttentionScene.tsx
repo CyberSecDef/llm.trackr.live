@@ -4,6 +4,7 @@ import { syntheticEmbedding, layerNormalize } from '@/lib/syntheticEmbedding';
 import { blendValues, generateMultiHeadMatrices, splitQKV } from '@/lib/syntheticAttention';
 import { viridisAt, normalize } from '@/lib/vizColors';
 import { VISIBLE_EMBEDDING_DIM, type PipelineState, type Scene } from '@/Components/Viz/Scene';
+import { usePerformanceMode } from '@/Components/Viz/PerformanceModeContext';
 
 /*
  * Scene 8 — Multi-head self-attention (M13 chunk 5).
@@ -51,6 +52,12 @@ interface AttentionSceneProps {
 }
 
 function AttentionScene({ t, tokens, embeddings, headMatrices }: AttentionSceneProps) {
+    // M13 chunk 12: degraded mode collapses the multi-head fan to a
+    // single representative head. Saves ~5× the SVG render cost
+    // during phase 8b's peak. The viewer still sees one valid head;
+    // the "showing 6 of 32" caption updates to "showing 1 of 32".
+    const { degraded } = usePerformanceMode();
+    const visibleHeadMatrices = degraded ? headMatrices.slice(0, 1) : headMatrices;
     const tokenList = tokens ?? [];
 
     // Per-phase opacities. The first phase (8a) is full-on at t=0
@@ -108,10 +115,11 @@ function AttentionScene({ t, tokens, embeddings, headMatrices }: AttentionSceneP
             {phase8b > 0 && (
                 <MultiHeadView
                     opacity={phase8b}
-                    matrices={headMatrices}
+                    matrices={visibleHeadMatrices}
                     fanOpenAmount={fanOpenAmount}
                     softmaxRow={softmaxRow}
                     totalHeads={DEFAULT_TOTAL_HEADS}
+                    degraded={degraded}
                 />
             )}
 
@@ -191,6 +199,7 @@ interface MultiHeadViewProps {
     fanOpenAmount: number;
     softmaxRow: number;
     totalHeads: number;
+    degraded?: boolean;
 }
 
 function MultiHeadView({
@@ -199,6 +208,7 @@ function MultiHeadView({
     fanOpenAmount,
     softmaxRow,
     totalHeads,
+    degraded = false,
 }: MultiHeadViewProps) {
     const n = matrices[0]?.length ?? 0;
     if (n === 0) return null;
@@ -251,6 +261,7 @@ function MultiHeadView({
                 data-testid="scene-8b-head-caption"
             >
                 Attention · showing {heads} of {totalHeads} heads
+                {degraded && ' · degraded'}
             </p>
             <p className="max-w-md text-center text-[9px] italic text-muted-foreground/70">
                 Each head computes its own causal attention pattern over the sequence. Rows

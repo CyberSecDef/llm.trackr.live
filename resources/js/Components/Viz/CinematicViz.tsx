@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { loadTokenizer } from '@/lib/tokenizer';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useWebGL2Support } from '@/hooks/useWebGL2Support';
+import { useFpsTracker } from '@/hooks/useFpsTracker';
 import { useSceneRunner } from '@/Components/Viz/useSceneRunner';
 import {
     SCENE_IDS,
@@ -18,6 +19,8 @@ import PipelineProgressBar from '@/Components/Viz/PipelineProgressBar';
 import PlaybackControls from '@/Components/Viz/PlaybackControls';
 import NumericalValuesPanel from '@/Components/Viz/NumericalValuesPanel';
 import { VectorInspectionProvider } from '@/Components/Viz/VectorInspectionContext';
+import { PerformanceModeProvider } from '@/Components/Viz/PerformanceModeContext';
+import FpsCounter from '@/Components/Viz/FpsCounter';
 import { Card, CardContent } from '@/Components/ui/card';
 import type { RunEvent } from '@/types/runs';
 
@@ -69,6 +72,11 @@ export default function CinematicViz({
 }: CinematicVizProps) {
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
+    // M13 chunk 12: track FPS + degraded mode globally for the viz.
+    // The hook drives the state machine (< 18 for 2s → degrade;
+    // > 24 for 5s → restore). Components opt in via
+    // usePerformanceMode() through the context provider below.
+    const performanceMode = useFpsTracker();
 
     // M13 chunk 3c: warm up the BPE tokenizer as soon as a prompt
     // arrives. Scenes 0-2 don't need it; Scene 3 does. The pipeline
@@ -233,104 +241,109 @@ export default function CinematicViz({
     })();
 
     return (
-        <Card data-testid="cinematic-viz">
-            <CardContent className="space-y-2 p-2">
-                <PipelineProgressBar
-                    currentSceneId={state.sceneId}
-                    onSelectScene={(id) => {
-                        const targetIdx = SCENE_IDS.indexOf(id as SceneId);
-                        if (targetIdx !== -1) controls.setScene(targetIdx);
-                    }}
-                />
-
-                <PlaybackControls
-                    state={state}
-                    controls={controls}
-                    liveSceneIndex={liveSceneIndex}
-                />
-
-                <div className="flex min-h-[400px] gap-2">
-                    <VocabSidebar
-                        tokens={vocabTokens}
-                        revealedCount={vocabRevealedCount}
-                        highlightTokenIndex={vocabHighlight}
+        <PerformanceModeProvider value={performanceMode}>
+            <Card data-testid="cinematic-viz">
+                <CardContent className="space-y-2 p-2">
+                    <PipelineProgressBar
+                        currentSceneId={state.sceneId}
+                        onSelectScene={(id) => {
+                            const targetIdx = SCENE_IDS.indexOf(id as SceneId);
+                            if (targetIdx !== -1) controls.setScene(targetIdx);
+                        }}
                     />
 
-                    <VectorInspectionProvider>
-                        <div className="relative flex-1 overflow-hidden rounded-md border border-border bg-slate-950">
-                            <div className="absolute top-2 right-2 z-10">
-                                <LayerCounterHud
-                                    currentLayer={currentLayerValue}
-                                    totalLayers={layerCounterVisible ? totalLayersValue : null}
-                                    visible={layerCounterVisible}
-                                />
+                    <PlaybackControls
+                        state={state}
+                        controls={controls}
+                        liveSceneIndex={liveSceneIndex}
+                    />
+
+                    <div className="flex min-h-[400px] gap-2">
+                        <VocabSidebar
+                            tokens={vocabTokens}
+                            revealedCount={vocabRevealedCount}
+                            highlightTokenIndex={vocabHighlight}
+                        />
+
+                        <VectorInspectionProvider>
+                            <div className="relative flex-1 overflow-hidden rounded-md border border-border bg-slate-950">
+                                <div className="absolute top-2 right-2 z-10">
+                                    <LayerCounterHud
+                                        currentLayer={currentLayerValue}
+                                        totalLayers={layerCounterVisible ? totalLayersValue : null}
+                                        visible={layerCounterVisible}
+                                    />
+                                </div>
+
+                                <FpsCounter />
+
+                                <NumericalValuesPanel />
+
+                                {gateMessage && (
+                                    <div
+                                        className="absolute top-2 left-2 z-10 max-w-md rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
+                                        role="note"
+                                        data-testid="cinematic-viz-gate-notice"
+                                    >
+                                        {gateMessage}
+                                    </div>
+                                )}
+
+                                {idle ? (
+                                    <div
+                                        className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
+                                        data-testid="cinematic-viz-idle"
+                                    >
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                                            Pipeline idle
+                                        </p>
+                                        <p className="text-sm text-foreground/80">
+                                            Submit a prompt to start the visualization.
+                                        </p>
+                                        <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
+                                            The 20-scene narrative runs from prompt entry through
+                                            autoregressive token emission.
+                                        </p>
+                                    </div>
+                                ) : activeScene ? (
+                                    <div
+                                        className="flex h-full min-h-[400px] flex-col"
+                                        data-testid="cinematic-viz-canvas"
+                                        data-scene-id={state.sceneId}
+                                        data-scene-t={state.t.toFixed(3)}
+                                    >
+                                        {activeScene.render(state.t, state.pipelineState)}
+                                    </div>
+                                ) : (
+                                    // Prompt present but the scene at this index isn't
+                                    // registered yet. Show the chunk-1 placeholder text
+                                    // so the user knows where we are in the pipeline.
+                                    <div
+                                        className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
+                                        data-testid="cinematic-viz-canvas"
+                                        data-scene-id={state.sceneId}
+                                    >
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                                            Scene {state.sceneIndex} / {state.totalScenes - 1}
+                                        </p>
+                                        <p className="text-sm text-foreground/80">
+                                            {SCENE_LABELS[state.sceneId]}
+                                        </p>
+                                        <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
+                                            Scene not yet implemented. Lands in a later M13
+                                            sub-chunk.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="absolute bottom-2 right-2 z-10 w-72">
+                                    <ChatBubble tokens={chatTokens} isFinal={chatIsFinal} />
+                                </div>
                             </div>
-
-                            <NumericalValuesPanel />
-
-                            {gateMessage && (
-                                <div
-                                    className="absolute top-2 left-2 z-10 max-w-md rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
-                                    role="note"
-                                    data-testid="cinematic-viz-gate-notice"
-                                >
-                                    {gateMessage}
-                                </div>
-                            )}
-
-                            {idle ? (
-                                <div
-                                    className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
-                                    data-testid="cinematic-viz-idle"
-                                >
-                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                                        Pipeline idle
-                                    </p>
-                                    <p className="text-sm text-foreground/80">
-                                        Submit a prompt to start the visualization.
-                                    </p>
-                                    <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
-                                        The 20-scene narrative runs from prompt entry through
-                                        autoregressive token emission.
-                                    </p>
-                                </div>
-                            ) : activeScene ? (
-                                <div
-                                    className="flex h-full min-h-[400px] flex-col"
-                                    data-testid="cinematic-viz-canvas"
-                                    data-scene-id={state.sceneId}
-                                    data-scene-t={state.t.toFixed(3)}
-                                >
-                                    {activeScene.render(state.t, state.pipelineState)}
-                                </div>
-                            ) : (
-                                // Prompt present but the scene at this index isn't
-                                // registered yet. Show the chunk-1 placeholder text
-                                // so the user knows where we are in the pipeline.
-                                <div
-                                    className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center"
-                                    data-testid="cinematic-viz-canvas"
-                                    data-scene-id={state.sceneId}
-                                >
-                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                                        Scene {state.sceneIndex} / {state.totalScenes - 1}
-                                    </p>
-                                    <p className="text-sm text-foreground/80">
-                                        {SCENE_LABELS[state.sceneId]}
-                                    </p>
-                                    <p className="max-w-md text-[11px] text-muted-foreground/70 italic">
-                                        Scene not yet implemented. Lands in a later M13 sub-chunk.
-                                    </p>
-                                </div>
-                            )}
-
-                            <div className="absolute bottom-2 right-2 z-10 w-72">
-                                <ChatBubble tokens={chatTokens} isFinal={chatIsFinal} />
-                            </div>
-                        </div>
-                    </VectorInspectionProvider>
-                </div>
-            </CardContent>
-        </Card>
+                        </VectorInspectionProvider>
+                    </div>
+                </CardContent>
+            </Card>
+        </PerformanceModeProvider>
     );
 }

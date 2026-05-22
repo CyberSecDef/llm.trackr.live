@@ -1,4 +1,5 @@
 import { tokenIdToHue } from '@/Components/Viz/TokenPill';
+import { usePerformanceMode } from '@/Components/Viz/PerformanceModeContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -66,6 +67,13 @@ export default function ParticleTrail({
             ? `hsl(${tokenIdToHue(colorFromHash)}deg 65% 60%)`
             : HASH_TO_COLOR_NEUTRAL;
 
+    // M13 chunk 12: degraded mode skips the CSS animation and just
+    // renders the guide line + a static destination dot. The
+    // motion-safe class is also already gating this under
+    // prefers-reduced-motion, but the degraded mode is independent
+    // (FPS-driven, not preference-driven).
+    const { degraded } = usePerformanceMode();
+
     // Inline CSS animation so the keyframes name is unique per
     // mount (avoids cross-component collisions on the global
     // stylesheet) and `durationMs` plumbs through cleanly.
@@ -119,13 +127,16 @@ export default function ParticleTrail({
                 cy={to.y}
                 r={3}
                 fill={color}
-                className="motion-safe:[animation:var(--anim)]"
+                className={degraded ? undefined : 'motion-safe:[animation:var(--anim)]'}
                 style={
-                    {
-                        '--anim': `${animName} ${durationMs}ms linear infinite`,
-                    } as React.CSSProperties
+                    degraded
+                        ? undefined
+                        : ({
+                              '--anim': `${animName} ${durationMs}ms linear infinite`,
+                          } as React.CSSProperties)
                 }
                 data-testid="particle-trail-pulse"
+                data-degraded={degraded ? 'true' : 'false'}
             />
         </svg>
     );

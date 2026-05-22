@@ -1,5 +1,6 @@
 import { normalize, viridisAt } from '@/lib/vizColors';
 import { useVectorInspection } from '@/Components/Viz/VectorInspectionContext';
+import { usePerformanceMode } from '@/Components/Viz/PerformanceModeContext';
 
 /*
  * VectorStrip (M13 chunk 2 + chunk 11b) — 1D horizontal heatmap
@@ -57,7 +58,11 @@ export default function VectorStrip({
     inspectionLabel,
 }: VectorStripProps) {
     const fullLength = totalLength ?? values.length;
-    const slice = values.slice(0, visibleCells);
+    // M13 chunk 12: clamp visible cells to 64 in degraded mode so
+    // long strips render half as many SVG rects per frame.
+    const { degraded } = usePerformanceMode();
+    const effectiveVisibleCells = degraded ? Math.min(visibleCells, 64) : visibleCells;
+    const slice = values.slice(0, effectiveVisibleCells);
     const truncated = fullLength > slice.length;
     const normalized = normalize(slice);
     // Reserve 12 px for the trailing "…" indicator when truncated.
