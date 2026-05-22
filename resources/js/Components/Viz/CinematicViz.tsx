@@ -58,7 +58,12 @@ interface CinematicVizProps {
     scenes?: ReadonlyArray<Scene<PipelineState, PipelineState>>;
 }
 
-export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: CinematicVizProps) {
+export default function CinematicViz({
+    events = [],
+    model,
+    prompt,
+    scenes = ALL_SCENES,
+}: CinematicVizProps) {
     const reducedMotion = useReducedMotion();
     const webgl2Supported = useWebGL2Support();
 
@@ -147,6 +152,29 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
         const row = vocabTokens.findIndex((t) => t.string === targetString);
         return row >= 0 ? row : null;
     })();
+
+    // M13 chunk 10b: derive chat-bubble tokens from the WebSocket
+    // event stream when present, falling back to the scene-driven
+    // generatedTokens. Spec literal: "driven directly by the real
+    // token.received WebSocket event so the user sees the response
+    // coming in even if the visualization hasn't reached Scene 17
+    // yet." When events stream live, the bubble can be ahead of the
+    // viz; when no events arrive (isolated chunk testing, replay
+    // without a stream), the chunks 8b/9a-populated generatedTokens
+    // fill in.
+    const tokenEvents = events.filter(
+        (e): e is Extract<RunEvent, { event: 'token.received' }> => e.event === 'token.received',
+    );
+    const chatTokens = (() => {
+        if (tokenEvents.length > 0) {
+            return tokenEvents.map((e) => e.payload.token);
+        }
+        return (state.pipelineState.generatedTokens ?? []).map((t) => t.string);
+    })();
+    const chatIsFinal =
+        tokenEvents.length > 0
+            ? tokenEvents[tokenEvents.length - 1]?.payload.is_final === true
+            : state.sceneId === 'detokenize' && state.t >= 0.9;
 
     // M13 chunk 10: LayerCounterHud visibility + values. Visible
     // during scenes 5-12 (the per-layer + tower scenes); hidden on
@@ -273,7 +301,7 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
                         )}
 
                         <div className="absolute bottom-2 right-2 z-10 w-72">
-                            <ChatBubble />
+                            <ChatBubble tokens={chatTokens} isFinal={chatIsFinal} />
                         </div>
                     </div>
                 </div>
