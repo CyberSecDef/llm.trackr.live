@@ -18,6 +18,7 @@
 import type { ReactNode } from 'react';
 import type { CharByteMapping } from '@/lib/textEncoding';
 import type { BpeToken } from '@/lib/tokenizer';
+import type { QKVTriple } from '@/lib/syntheticAttention';
 
 /**
  * Stable ordinal identifier for each scene in the pipeline. Used
@@ -127,6 +128,22 @@ export interface PipelineState {
     /** Layer-normalized vectors (Scene 7 output). Subsequent
      *  per-layer scenes (chunks 5-7) overwrite this. */
     layerNormed?: readonly (readonly number[])[];
+    /** Per-token Q/K/V projections from the representative head
+     *  (Scene 8 / chunk 5 output). Computed from `layerNormed`. */
+    qkv?: readonly QKVTriple[];
+    /** Multi-head attention matrices (Scene 8b fan-out). Each
+     *  entry is an N×N causal matrix for one head. The array
+     *  length equals the *rendered* head count (chunk-5 default 6,
+     *  per the "representative 4-6 fanned heads" decision); the
+     *  full `model.attention_heads` count is communicated via the
+     *  Scene 8b caption. */
+    attentionHeadMatrices?: readonly (readonly (readonly number[])[])[];
+    /** Single representative attention matrix used for the
+     *  collapsed-down view and the Scene 8c V-blend. */
+    attentionScores?: readonly (readonly number[])[];
+    /** Per-token attention output (Scene 8 / chunk 5 output).
+     *  blendValues(qkv.v[], attentionScores) per row. */
+    attentionOutput?: readonly (readonly number[])[];
 }
 
 /**

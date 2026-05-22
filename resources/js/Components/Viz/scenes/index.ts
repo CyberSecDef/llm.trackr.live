@@ -7,14 +7,15 @@ import { SCENE_TOKEN_IDS } from '@/Components/Viz/scenes/TokenIdsScene';
 import { SCENE_EMBEDDING_LOOKUP } from '@/Components/Viz/scenes/EmbeddingLookupScene';
 import { SCENE_POSITIONAL_ENCODING } from '@/Components/Viz/scenes/PositionalEncodingScene';
 import { SCENE_LAYER_NORM } from '@/Components/Viz/scenes/LayerNormScene';
+import { SCENE_ATTENTION } from '@/Components/Viz/scenes/AttentionScene';
 
 /*
  * ALL_SCENES (M13 chunk 3+) — the ordered scene registry the
  * SceneRunner walks through. Each chunk adds entries:
  *   - chunk 3b: scenes 0, 1, 2
  *   - chunk 3c: scenes 3, 4
- *   - chunk 4:  scenes 5, 6, 7 (this commit)
- *   - chunk 5:  scene 8
+ *   - chunk 4:  scenes 5, 6, 7
+ *   - chunk 5:  scene 8 (this commit)
  *   - chunk 6:  scenes 9, 10, 11
  *   - chunk 7:  scene 12
  *   - chunk 8:  scenes 13, 14, 15, 16, 17
@@ -33,6 +34,7 @@ export const ALL_SCENES: ReadonlyArray<Scene<PipelineState, PipelineState>> = [
     SCENE_EMBEDDING_LOOKUP, // 5
     SCENE_POSITIONAL_ENCODING, // 6
     SCENE_LAYER_NORM, // 7
+    SCENE_ATTENTION, // 8
 ];
 
 export {
@@ -44,4 +46,5 @@ export {
     SCENE_EMBEDDING_LOOKUP,
     SCENE_POSITIONAL_ENCODING,
     SCENE_LAYER_NORM,
+    SCENE_ATTENTION,
 };
