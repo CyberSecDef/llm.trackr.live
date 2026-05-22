@@ -10,6 +10,7 @@ import { SCENE_LAYER_NORM } from '@/Components/Viz/scenes/LayerNormScene';
 import { SCENE_ATTENTION } from '@/Components/Viz/scenes/AttentionScene';
 import { SCENE_RESIDUAL_1, SCENE_RESIDUAL_2 } from '@/Components/Viz/scenes/ResidualScene';
 import { SCENE_FFN } from '@/Components/Viz/scenes/FFNScene';
+import { SCENE_LAYER_STACK } from '@/Components/Viz/scenes/LayerStackScene';
 
 /*
  * ALL_SCENES (M13 chunk 3+) — the ordered scene registry the
@@ -18,8 +19,8 @@ import { SCENE_FFN } from '@/Components/Viz/scenes/FFNScene';
  *   - chunk 3c: scenes 3, 4
  *   - chunk 4:  scenes 5, 6, 7
  *   - chunk 5:  scene 8
- *   - chunk 6:  scenes 9, 10, 11 (this commit)
- *   - chunk 7:  scene 12
+ *   - chunk 6:  scenes 9, 10, 11
+ *   - chunk 7:  scene 12 (this commit)
  *   - chunk 8:  scenes 13, 14, 15, 16, 17
  *   - chunk 9:  scenes 18, 19, 20
  *
@@ -40,6 +41,7 @@ export const ALL_SCENES: ReadonlyArray<Scene<PipelineState, PipelineState>> = [
     SCENE_RESIDUAL_1, // 9
     SCENE_FFN, // 10
     SCENE_RESIDUAL_2, // 11
+    SCENE_LAYER_STACK, // 12
 ];
 
 export {
@@ -55,4 +57,5 @@ export {
     SCENE_RESIDUAL_1,
     SCENE_FFN,
     SCENE_RESIDUAL_2,
+    SCENE_LAYER_STACK,
 };

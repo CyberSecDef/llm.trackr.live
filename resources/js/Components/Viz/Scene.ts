@@ -164,6 +164,11 @@ export interface PipelineState {
      *  richer per-scene model handle). Drives the SwiGLU/GELU
      *  pick in Scene 10. Null = unknown → GELU default. */
     architectureType?: string | null;
+    /** Total layer count from `model.layers`, propagated so
+     *  Scene 12 (tower view) and the chunk-10 persistent
+     *  layer-counter HUD know the tower height. Null = unknown
+     *  → Scene 12 defaults to 32 (Llama-7B / GPT-3.5 class). */
+    totalLayers?: number | null;
 }
 
 /**

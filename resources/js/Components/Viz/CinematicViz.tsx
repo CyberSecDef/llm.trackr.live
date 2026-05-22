@@ -78,9 +78,13 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
     const initialState = useMemo<PipelineState>(
         () =>
             prompt
-                ? { promptText: prompt, architectureType: model?.architecture_type ?? null }
+                ? {
+                      promptText: prompt,
+                      architectureType: model?.architecture_type ?? null,
+                      totalLayers: model?.layers ?? null,
+                  }
                 : {},
-        [prompt, model?.architecture_type],
+        [prompt, model?.architecture_type, model?.layers],
     );
 
     const { state, controls } = useSceneRunner({
