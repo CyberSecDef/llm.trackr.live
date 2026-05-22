@@ -131,16 +131,17 @@ afterEach(() => {
     delete (globalThis as any).fetch;
 });
 
-describe('CinematicViz WebGL2-unsupported gate (M13 chunk 1)', () => {
+describe('CinematicViz WebGL2-unsupported gate (M13 chunk 1 + chunk 13)', () => {
     // The M8-era right-pane tab toggle (view-viz / view-embeddings /
     // view-debug + a per-tab disabled state) is gone. Chunk 1 of M13
     // mounts CinematicViz directly and the gate surfaces as a single
-    // amber notice inside the new mount. Chunk 13 evolves the gate
-    // into the tri-state (full / 2D-svg / debug-text) — for now we
-    // just assert that the notice renders + the M8 testids no longer
-    // exist.
+    // amber notice inside the new mount. Chunk 13 evolved the gate
+    // into the tri-state (full / 2D-svg / debug-text): the copy now
+    // says "3D camera moves are unavailable; the visualization is
+    // rendering in 2D mode" instead of the chunk-1 "once Chunk 13
+    // lands" placeholder.
 
-    it('mounts CinematicViz + shows the gate notice when WebGL 2 is unavailable', () => {
+    it('mounts CinematicViz + shows the WebGL gate notice with the chunk-13 spec copy', () => {
         render(
             <ThreadShow
                 thread={baseThread}
@@ -151,7 +152,9 @@ describe('CinematicViz WebGL2-unsupported gate (M13 chunk 1)', () => {
         );
         expect(screen.getByTestId('cinematic-viz')).toBeInTheDocument();
         const notice = screen.getByTestId('cinematic-viz-gate-notice');
-        expect(notice.textContent).toMatch(/WebGL 2\.0/i);
+        expect(notice.getAttribute('data-gate-mode')).toBe('webgl');
+        expect(notice.textContent).toMatch(/3D camera moves are unavailable/i);
+        expect(notice.textContent).toMatch(/rendering in 2D mode/i);
     });
 
     it('no longer renders the M8-era view-viz / view-embeddings / view-debug tab toggle', () => {

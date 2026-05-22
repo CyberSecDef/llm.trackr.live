@@ -116,16 +116,48 @@ export default function CinematicViz({
         [prompt, model?.architecture_type, model?.layers, model?.vocab_size],
     );
 
+    // M13 chunk 13: in reduced-motion mode the scene runner does NOT
+    // autoplay through the t-axis. Scenes render at t=1 (completion
+    // frame) and a slow 4-second timer auto-advances to the next
+    // scene. PlaybackControls' Step button still works on top of
+    // this — manual advance is always available.
     const { state, controls } = useSceneRunner({
         scenes,
         initialState,
-        autoplay: prompt !== null && prompt !== undefined,
+        autoplay: !reducedMotion && prompt !== null && prompt !== undefined,
     });
 
+    // 4-second auto-advance for reduced-motion. Step in the chunk-11
+    // PlaybackControls (or any other setScene call) resets the timer.
+    useEffect(() => {
+        if (!reducedMotion || !prompt) return;
+        if (state.sceneIndex >= state.totalScenes - 1) return; // pinned at last scene
+        const timer = setTimeout(() => controls.nextScene(), 4000);
+        return () => clearTimeout(timer);
+    }, [reducedMotion, prompt, state.sceneIndex, state.totalScenes, controls]);
+
+    // Effective t for scene render: reduced-motion freezes at 1
+    // (the completion frame); the runner's actual t still ticks
+    // (used for the auto-advance scheduling) but the scene's
+    // render function never sees it.
+    const renderT = reducedMotion ? 1 : state.t;
+
+    // M13 chunk 13: tri-state gate notice.
+    //   webgl2Supported=false → SVG fallback notice (the M13 viz is
+    //                            already all-SVG, so this is purely
+    //                            informational: 3D camera moves
+    //                            wouldn't have been visible anyway).
+    //   reducedMotion=true    → PowerPoint mode notice.
+    //   Both true             → WebGL notice wins (more critical).
     const gateMessage = !webgl2Supported
-        ? 'WebGL 2.0 is unavailable in this browser. The visualization will render in 2D-only mode once Chunk 13 lands.'
+        ? '3D camera moves are unavailable; the visualization is rendering in 2D mode.'
         : reducedMotion
-          ? 'Reduced-motion is set. The visualization will play scene-by-scene without continuous animation once Chunk 13 lands.'
+          ? 'Reduced-motion is set. Scenes display as static completion frames; advance via Step or wait 4 seconds.'
+          : null;
+    const gateTestId = !webgl2Supported
+        ? 'cinematic-viz-gate-webgl'
+        : reducedMotion
+          ? 'cinematic-viz-gate-reduced-motion'
           : null;
 
     const idle = !prompt;
@@ -279,11 +311,15 @@ export default function CinematicViz({
 
                                 <NumericalValuesPanel />
 
-                                {gateMessage && (
+                                {gateMessage && gateTestId && (
                                     <div
                                         className="absolute top-2 left-2 z-10 max-w-md rounded-md border border-amber-900/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200"
                                         role="note"
                                         data-testid="cinematic-viz-gate-notice"
+                                        data-gate-mode={gateTestId.replace(
+                                            'cinematic-viz-gate-',
+                                            '',
+                                        )}
                                     >
                                         {gateMessage}
                                     </div>
@@ -310,9 +346,10 @@ export default function CinematicViz({
                                         className="flex h-full min-h-[400px] flex-col"
                                         data-testid="cinematic-viz-canvas"
                                         data-scene-id={state.sceneId}
-                                        data-scene-t={state.t.toFixed(3)}
+                                        data-scene-t={renderT.toFixed(3)}
+                                        data-reduced-motion={reducedMotion ? 'true' : 'false'}
                                     >
-                                        {activeScene.render(state.t, state.pipelineState)}
+                                        {activeScene.render(renderT, state.pipelineState)}
                                     </div>
                                 ) : (
                                     // Prompt present but the scene at this index isn't
