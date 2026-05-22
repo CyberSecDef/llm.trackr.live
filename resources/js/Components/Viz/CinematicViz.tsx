@@ -88,6 +88,13 @@ export default function CinematicViz({ model, prompt, scenes = ALL_SCENES }: Cin
                       architectureType: model?.architecture_type ?? null,
                       totalLayers: model?.layers ?? null,
                       vocabSize: model?.vocab_size ?? null,
+                      // Chunk 8b sampling defaults. Chunk 10 wires
+                      // these from run.parameters.
+                      samplingMode: 'greedy',
+                      samplingK: 40,
+                      samplingP: 0.95,
+                      samplingTemperature: 1.0,
+                      generatedTokens: [],
                   }
                 : {},
         [prompt, model?.architecture_type, model?.layers, model?.vocab_size],

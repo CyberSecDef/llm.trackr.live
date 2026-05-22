@@ -126,3 +126,137 @@ export function pickTopK(values: readonly number[], k: number): { value: number;
     indexed.sort((a, b) => b.value - a.value);
     return indexed.slice(0, k);
 }
+
+/**
+ * Apply softmax with optional temperature scaling. Numerically
+ * stable via the standard max-subtraction trick. Temperature < 1
+ * sharpens the distribution (top-1 dominates more); > 1 flattens.
+ * Returns probabilities summing to 1.
+ */
+export function softmax(values: readonly number[], temperature = 1): number[] {
+    if (values.length === 0) return [];
+    const t = Math.max(1e-6, temperature);
+    // Find max for stability before exponentiating.
+    let max = values[0];
+    for (let i = 1; i < values.length; i++) {
+        if (values[i] > max) max = values[i];
+    }
+    const exps = values.map((v) => Math.exp((v - max) / t));
+    let sum = 0;
+    for (const e of exps) sum += e;
+    if (sum <= 0) return values.map(() => 1 / values.length);
+    return exps.map((e) => e / sum);
+}
+
+/**
+ * Given an already-sorted-descending probability array, find the
+ * smallest index `i` such that probs[0] + … + probs[i] >= p.
+ * Returns probs.length if the cumulative never reaches p (shouldn't
+ * happen for a normalized distribution + p ∈ [0, 1]).
+ *
+ * Used by Scene 16's top-p sampling beat: "fill line sweeps from
+ * left until cumulative probability reaches p."
+ */
+export function topPCutoffIndex(sortedProbs: readonly number[], p: number): number {
+    if (sortedProbs.length === 0) return 0;
+    const target = Math.max(0, Math.min(1, p));
+    let cum = 0;
+    for (let i = 0; i < sortedProbs.length; i++) {
+        cum += sortedProbs[i];
+        if (cum >= target) return i;
+    }
+    return sortedProbs.length - 1;
+}
+
+/**
+ * Pick a single token index from a sorted-descending probability
+ * distribution, given the sampling mode. Deterministic per
+ * `(sampleSeed, mode, k, p)`.
+ *
+ * Greedy:  always returns index 0.
+ * Top-K:   xorshift32-seeded pick from indices [0, k).
+ * Top-P:   xorshift32-seeded pick from [0, topPCutoff].
+ *
+ * Returns the index into `sortedProbs`, not the original vocab
+ * index — caller maps back via the indexed top-K list.
+ */
+export type SamplingMode = 'greedy' | 'top_k' | 'top_p';
+
+export function sampleByMode(
+    sortedProbs: readonly number[],
+    mode: SamplingMode,
+    k: number,
+    p: number,
+    sampleSeed: number,
+): number {
+    if (sortedProbs.length === 0) return 0;
+    if (mode === 'greedy') return 0;
+
+    let upperBound: number;
+    if (mode === 'top_k') {
+        upperBound = Math.max(1, Math.min(k, sortedProbs.length));
+    } else {
+        // top_p: cap at the cumulative-p cutoff
+        upperBound = topPCutoffIndex(sortedProbs, p) + 1;
+    }
+
+    // Weighted xorshift32 draw within [0, upperBound). Re-normalize
+    // the truncated probs so the weights still sum to ~1.
+    let s = (sampleSeed | 0) ^ 0xabad1dea;
+    if (s === 0) s = 1;
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    const r01 = (s >>> 0) / 0xffffffff;
+
+    const truncated = sortedProbs.slice(0, upperBound);
+    let truncSum = 0;
+    for (const v of truncated) truncSum += v;
+    if (truncSum <= 0) return 0;
+    const target = r01 * truncSum;
+    let cum = 0;
+    for (let i = 0; i < truncated.length; i++) {
+        cum += truncated[i];
+        if (cum >= target) return i;
+    }
+    return truncated.length - 1;
+}
+
+/**
+ * Synthetic token-string bank. Real tokenizer-grounded strings
+ * come in chunk 10 when the WebSocket-streamed winner overrides
+ * the synthetic pick. For chunk 8b we pick from this table keyed
+ * by the chosen top-K rank so each spike consistently maps to a
+ * plausible-looking string.
+ *
+ * Strings include a leading space when it's natural (mid-sentence
+ * tokens) so the chat-bubble accumulator looks like real
+ * generation. Deliberately bland English so it reads as
+ * "illustrative continuation" rather than a fabricated quote.
+ */
+const SYNTHETIC_TOKEN_BANK: readonly string[] = [
+    ' the',
+    ' a',
+    ' is',
+    ' that',
+    ' and',
+    ' it',
+    ' was',
+    ' I',
+    ' to',
+    ' in',
+    ' of',
+    ' for',
+    ' on',
+    ' with',
+    ' as',
+    ' by',
+];
+
+export function syntheticTokenString(topKRank: number): string {
+    if (SYNTHETIC_TOKEN_BANK.length === 0) return ' ?';
+    const i =
+        (((topKRank | 0) % SYNTHETIC_TOKEN_BANK.length) + SYNTHETIC_TOKEN_BANK.length) %
+        SYNTHETIC_TOKEN_BANK.length;
+    return SYNTHETIC_TOKEN_BANK[i];
+}

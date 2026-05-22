@@ -180,6 +180,34 @@ export interface PipelineState {
      *  chunk 8a output). Length = `vocabSize`; mostly cool
      *  values with a handful of injected hot spikes. */
     logits?: readonly number[];
+    /** Sorted-descending top-K probability bars (Scene 15 /
+     *  chunk 8b output). Each entry is `{ vocabIndex, prob,
+     *  string }`. K is the render bar count, not the sampling K. */
+    probabilities?: readonly ProbabilityBar[];
+    /** Sampling mode (Scene 16 / chunk 8b). Chunk 10 wires from
+     *  run.parameters; default 'greedy'. */
+    samplingMode?: 'greedy' | 'top_k' | 'top_p';
+    /** Top-K cutoff for sampling. Default 40. */
+    samplingK?: number;
+    /** Top-P cumulative cutoff (∈ [0, 1]). Default 0.95. */
+    samplingP?: number;
+    /** Softmax temperature. Default 1.0. */
+    samplingTemperature?: number;
+    /** Result of the sampling step (Scene 16 / chunk 8b output). */
+    sampledToken?: { vocabIndex: number; string: string; prob: number };
+    /** Tokens emitted so far (Scene 17 / chunk 8b output, grows
+     *  one token at a time per autoregressive loop iteration). */
+    generatedTokens?: readonly { vocabIndex: number; string: string }[];
+}
+
+export interface ProbabilityBar {
+    /** Index into the full logits / vocab array. */
+    vocabIndex: number;
+    /** Post-softmax probability ∈ [0, 1]. */
+    prob: number;
+    /** Display string for the token (synthetic in chunk 8b,
+     *  tokenizer-grounded in chunk 10). */
+    string: string;
 }
 
 /**

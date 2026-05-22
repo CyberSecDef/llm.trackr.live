@@ -13,6 +13,9 @@ import { SCENE_FFN } from '@/Components/Viz/scenes/FFNScene';
 import { SCENE_LAYER_STACK } from '@/Components/Viz/scenes/LayerStackScene';
 import { SCENE_FINAL_NORM } from '@/Components/Viz/scenes/FinalNormScene';
 import { SCENE_LM_HEAD } from '@/Components/Viz/scenes/LMHeadScene';
+import { SCENE_SOFTMAX } from '@/Components/Viz/scenes/SoftmaxScene';
+import { SCENE_SAMPLING } from '@/Components/Viz/scenes/SamplingScene';
+import { SCENE_TOKEN_EMERGE } from '@/Components/Viz/scenes/TokenEmergeScene';
 
 /*
  * ALL_SCENES (M13 chunk 3+) — the ordered scene registry the
@@ -23,8 +26,8 @@ import { SCENE_LM_HEAD } from '@/Components/Viz/scenes/LMHeadScene';
  *   - chunk 5:  scene 8
  *   - chunk 6:  scenes 9, 10, 11
  *   - chunk 7:  scene 12
- *   - chunk 8a: scenes 13, 14 (this commit)
- *   - chunk 8b: scenes 15, 16, 17
+ *   - chunk 8a: scenes 13, 14
+ *   - chunk 8b: scenes 15, 16, 17 (this commit)
  *   - chunk 9:  scenes 18, 19, 20
  *
  * Unregistered scene slots fall through to the CinematicViz
@@ -47,6 +50,9 @@ export const ALL_SCENES: ReadonlyArray<Scene<PipelineState, PipelineState>> = [
     SCENE_LAYER_STACK, // 12
     SCENE_FINAL_NORM, // 13
     SCENE_LM_HEAD, // 14
+    SCENE_SOFTMAX, // 15
+    SCENE_SAMPLING, // 16
+    SCENE_TOKEN_EMERGE, // 17
 ];
 
 export {
@@ -65,4 +71,7 @@ export {
     SCENE_LAYER_STACK,
     SCENE_FINAL_NORM,
     SCENE_LM_HEAD,
+    SCENE_SOFTMAX,
+    SCENE_SAMPLING,
+    SCENE_TOKEN_EMERGE,
 };
