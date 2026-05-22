@@ -15,6 +15,7 @@ import VocabSidebar from '@/Components/Viz/VocabSidebar';
 import ChatBubble from '@/Components/Viz/ChatBubble';
 import LayerCounterHud from '@/Components/Viz/LayerCounterHud';
 import PipelineProgressBar from '@/Components/Viz/PipelineProgressBar';
+import PlaybackControls from '@/Components/Viz/PlaybackControls';
 import { Card, CardContent } from '@/Components/ui/card';
 import type { RunEvent } from '@/types/runs';
 
@@ -176,6 +177,18 @@ export default function CinematicViz({
             ? tokenEvents[tokenEvents.length - 1]?.payload.is_final === true
             : state.sceneId === 'detokenize' && state.t >= 0.9;
 
+    // M13 chunk 11a: jump-to-live target. Per chunk-11 decisions:
+    //   no token events                → null (button disabled)
+    //   token.received but not final   → 18 (autoregressive loop)
+    //   final token received           → 20 (detokenize / EOS)
+    // CinematicViz computes this here so PlaybackControls stays a
+    // pure render component.
+    const liveSceneIndex: number | null = (() => {
+        if (tokenEvents.length === 0) return null;
+        const lastIsFinal = tokenEvents[tokenEvents.length - 1].payload.is_final === true;
+        return lastIsFinal ? 20 : 18;
+    })();
+
     // M13 chunk 10: LayerCounterHud visibility + values. Visible
     // during scenes 5-12 (the per-layer + tower scenes); hidden on
     // tokenization (0-4) + output (13-20). currentLayer defaults to
@@ -226,6 +239,12 @@ export default function CinematicViz({
                         const targetIdx = SCENE_IDS.indexOf(id as SceneId);
                         if (targetIdx !== -1) controls.setScene(targetIdx);
                     }}
+                />
+
+                <PlaybackControls
+                    state={state}
+                    controls={controls}
+                    liveSceneIndex={liveSceneIndex}
                 />
 
                 <div className="flex min-h-[400px] gap-2">
