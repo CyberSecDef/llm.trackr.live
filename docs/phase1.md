@@ -27,7 +27,7 @@ This document breaks Phase 1 into 15 milestones (M1–M15). Each milestone lists
 | M10 | GIF Export | M8 | 6 days | ✅ Complete | |
 | M11 | Thread Sharing | M9 | 3 days | ✅ Done | |
 | M12 | Accessibility + Polish | M11 | 5 days | ✅ Done | |
-| M13 | Cinematic Inference Visualization | M12 | 12 days | 🟡 In progress (chunks 1–10 done) | Replaces the M8 live viz with a 20-scene narrative |
+| M13 | Cinematic Inference Visualization | M12 | 12 days | 🟡 In progress (chunks 1–11 done) | Replaces the M8 live viz with a 20-scene narrative |
 | M14 | Deployment | M13 | 5 days | ⚪ Not started | |
 | M15 | Launch Prep | M14 | 5 days | ⚪ Not started | |
 | | **Total** | | **~80 engineer-days** | | |
@@ -1033,7 +1033,7 @@ Bonus M12 work beyond the SPEC's two exit criteria:
   - **Layer counter HUD (top-right)**: integer counter + tower progress mini-bar. Visible during scenes 5-12. Auto-hides during scenes 0-4 + 13-20.
   - **Pipeline progress bar (top, 20 segments)**: full-width strip, each segment named ("Prompt", "Bytes", "Chat tpl", "BPE", "IDs", "Embed", "RoPE", "Norm", "Attention", "Residual", "FFN", "Residual", "Layers", "Norm", "LM head", "Softmax", "Sample", "Emit", "Loop", "Cache", "Detok"). Current scene highlighted. Click any segment → jump to that scene's start (uses SceneRunner's `setScene(n)`).
 
-- [ ] **Chunk 11 — Playback controls + per-scene scrub.** Adapt the M8 chunk-8 `PlaybackControls` to scene-level. Speed buttons: **0.25× / 1× / 4×** (per `docs/visualization.md` production notes). Step: advance to next scene-boundary, not next event. Jump-to-live: catch up to the scene that matches the current token-stream position. **Click any vector strip** to expand it into a numerical-values panel (per the production note "let the user click any vector strip to expand it and see actual numerical values"). The expanded panel docks to the side, doesn't block the canvas.
+- [x] **Chunk 11 — Playback controls + per-scene scrub.** Adapt the M8 chunk-8 `PlaybackControls` to scene-level. Speed buttons: **0.25× / 1× / 4×** (per `docs/visualization.md` production notes). Step: advance to next scene-boundary, not next event. Jump-to-live: catch up to the scene that matches the current token-stream position. **Click any vector strip** to expand it into a numerical-values panel (per the production note "let the user click any vector strip to expand it and see actual numerical values"). The expanded panel docks to the side, doesn't block the canvas.
 
 - [ ] **Chunk 12 — Performance hardening (20-30 FPS target).** Per user direction: aim for 20-30 FPS sustained. Simpler shapes are OK as long as the idea carries. Monitor FPS via the existing `FpsCounter` overlay (M8 chunk 4); add a degraded-mode automatic fallback when FPS drops below 18 for 2+ seconds:
   - Multi-head attention stack → single representative head shown
@@ -1066,7 +1066,20 @@ Bonus M12 work beyond the SPEC's two exit criteria:
 - **Real run continues independently.** The M6 streaming pipeline + the M8 `useRunStream` hook keep doing exactly what they do. The chat bubble subscribes to the same WebSocket events and displays tokens as they arrive. Scenes 18-20 use the same event timeline to drive the autoregressive-loop pacing, but the viz lagging behind is expected + acceptable.
 - **WebSocket → Scene coupling.** Scenes 5-17 fire once per *generated* token. The current `RunEvent` schema (M6) emits one `token.received` per token; the SceneRunner subscribes + advances. For the input tokens (the prompt), the runner enters Scenes 0-4 at submit time without waiting for the WebSocket.
 
-**Decisions (chunk 11a):** (PlaybackControls — chunk 11 is mid-flight; checkbox stays unchecked until 11b lands the click-to-expand panel.)
+**Decisions (chunk 11b):** (Click-to-expand numerical-values panel — completing chunk 11.)
+- **Opt-in via React context, not per-scene wiring.** `<VectorInspectionProvider>` wraps the canvas; `VectorStrip` calls `useVectorInspection()` and auto-becomes clickable when inside the provider. Outside the provider the strip stays non-interactive (the chunk-2 behaviour). Means ~100 strip mounts across 20 scenes get the feature for free, no scene code changes.
+- **Context's `open` / `close` are `useCallback`-stable.** The first draft had an infinite render loop: tests' `useEffect([inspection], () => inspection.open(...))` re-fired each time `setActive` recreated the context value. Fix is stable callbacks via useCallback (empty deps); tests now depend on `open` not `inspection`. Documented in the context source as a footgun warning.
+- **VectorStrip becomes `role="button"` + `tabIndex={0}` only when inspectable.** Outside the provider it stays `role="img"` (the chunk-2 default — non-focusable). Inside the provider, Enter + Space keyboard activation matches the M12 chunk-2 a11y pattern. focus-visible ring on cyan. Hover gives a subtle shadow.
+- **NumericalValuesPanel docks as a right-overlay** taking ~40% of the canvas, with a 60%-width backdrop on the left. Click backdrop OR the × button OR press Escape to dismiss. Empty-state (no active inspection) returns null — no DOM weight.
+- **Cell list caps at 64 entries.** Renders as a 2-column grid with index + value + viridis swatch. Big vectors (e.g., 4096-cell embeddings) show "First 64 cells (of 4096)" header. Stats use the FULL vector, not just the rendered 64 — dim/mean/std/min-max all reflect the complete data.
+- **Stats grid is dim / mean / std / range, in a 4-column row.** Range is "min…max" with em-dash separator. All values use `formatNumber`: 3 decimals for |v| < 100, fewer for larger magnitudes. Test pins the mean of `[1,2,3,4]` at `2.500`.
+- **Escape-to-dismiss via a global `keydown` listener** mounted only while the panel is active. Attaches in `useEffect([inspection])`, removes on cleanup. Doesn't impair other keyboard handlers when the panel is closed.
+- **`inspectionLabel` prop on VectorStrip falls through to `caption` then "Unnamed vector".** Gives every scene a chance to set a meaningful label (e.g., "Layer 5 hidden state · token 3") without requiring it. Most existing scenes already use captions, so the fallback chain works without per-scene changes.
+- **Empty vectors are explicitly NOT inspectable** (`data-inspectable="false"`). Clicking a zero-cell strip would open a panel with nothing useful. Tests assert this.
+- **VectorInspectionProvider mounts INSIDE the chat-bubble / layer-counter scope** in `CinematicViz`, so the panel only overlays the scene canvas — not the chat bubble or vocab sidebar (those stay accessible). The backdrop blur is light (1px) to keep the underlying scene readable as context.
+- **Chunk 11 complete with both halves.** PlaybackControls (chunk 11a) + click-to-expand panel (chunk 11b). All four affordances from the spec line are now wired: speed selector, step, jump-to-live, click-strip-to-expand.
+
+**Decisions (chunk 11a):** (PlaybackControls — chunk 11 is mid-flight; superseded by chunk 11b.)
 - **`useSceneRunner` controls already covered the needs.** Speed (PLAYBACK_SPEEDS already `[0.25, 1, 4]`), play/pause/toggle, prev/next scene (= "step to scene-boundary" per chunk-11 spec). No runner changes needed — chunk 11a is pure UI + jump-to-live derivation.
 - **`PlaybackControls` is a pure render component** taking `state + controls + liveSceneIndex`. CinematicViz computes `liveSceneIndex` from the events stream and passes it through. Same pattern as the chunk-1 `PipelineProgressBar` (state + onSelectScene). Keeps the chunk-11 component pure-render, easy to test.
 - **Jump-to-live heuristic** matches the chunk-11 design decision: no events → null → button disabled; any token.received → setScene(18); is_final → setScene(20). Documented in the inline comment + tested explicitly. The button is also disabled when the live target equals the current scene — "no jump needed" UX state.

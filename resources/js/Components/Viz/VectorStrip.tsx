@@ -1,12 +1,19 @@
 import { normalize, viridisAt } from '@/lib/vizColors';
+import { useVectorInspection } from '@/Components/Viz/VectorInspectionContext';
 
 /*
- * VectorStrip (M13 chunk 2) — 1D horizontal heatmap representing
- * a single vector (token embedding, hidden state, logits row, etc.)
+ * VectorStrip (M13 chunk 2 + chunk 11b) — 1D horizontal heatmap
+ * representing a single vector (token embedding, hidden state,
+ * logits row, etc.)
  *
  * Per `docs/visualization.md` visual language: "Vectors =
  * horizontal bars or 1D heatmap strips (each cell a color from a
  * magma/viridis ramp based on value)."
+ *
+ * Chunk 11b: when wrapped in a `<VectorInspectionProvider>`, the
+ * strip becomes clickable — opening the `<NumericalValuesPanel>`
+ * with this strip's full values. Outside a provider the strip
+ * stays non-interactive (the chunk-2 behaviour).
  *
  * Implementation:
  *   - SVG with one <rect> per visible cell
@@ -34,6 +41,10 @@ export interface VectorStripProps {
     width?: number;
     /** Caption above the strip; not announced via aria-label. */
     caption?: string;
+    /** Optional label passed to the inspection panel when clicked.
+     *  When omitted, the panel falls back to the caption (if any)
+     *  then to "Unnamed vector". */
+    inspectionLabel?: string;
 }
 
 export default function VectorStrip({
@@ -43,6 +54,7 @@ export default function VectorStrip({
     height = 16,
     width = 320,
     caption,
+    inspectionLabel,
 }: VectorStripProps) {
     const fullLength = totalLength ?? values.length;
     const slice = values.slice(0, visibleCells);
@@ -56,6 +68,12 @@ export default function VectorStrip({
         ? `Vector heatmap, showing ${slice.length} of ${fullLength} cells, viridis palette`
         : `Vector heatmap, ${slice.length} cells, viridis palette`;
 
+    const inspection = useVectorInspection();
+    const isInspectable = inspection !== null && values.length > 0;
+    const onClick = isInspectable
+        ? () => inspection!.open(values, inspectionLabel ?? caption ?? 'Unnamed vector')
+        : undefined;
+
     return (
         <div className="space-y-0.5" data-testid="vector-strip">
             {caption && (
@@ -66,12 +84,31 @@ export default function VectorStrip({
             <svg
                 width={width}
                 height={height}
-                role="img"
-                aria-label={ariaLabel}
-                className="block rounded-sm border border-border bg-slate-950"
+                role={isInspectable ? 'button' : 'img'}
+                aria-label={
+                    isInspectable ? `${ariaLabel}. Click to inspect numerical values.` : ariaLabel
+                }
+                tabIndex={isInspectable ? 0 : undefined}
+                onClick={onClick}
+                onKeyDown={
+                    isInspectable
+                        ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  onClick?.();
+                              }
+                          }
+                        : undefined
+                }
+                className={`block rounded-sm border border-border bg-slate-950 ${
+                    isInspectable
+                        ? 'cursor-pointer transition-shadow hover:shadow-[0_0_0_2px_rgba(103,232,249,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                        : ''
+                }`}
                 data-testid="vector-strip-svg"
                 data-visible-cells={slice.length}
                 data-total-length={fullLength}
+                data-inspectable={isInspectable ? 'true' : 'false'}
             >
                 {normalized.map((v, i) => (
                     <rect

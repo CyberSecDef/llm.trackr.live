@@ -1,7 +1,22 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import VectorStrip from '@/Components/Viz/VectorStrip';
 import { VIRIDIS_STOPS } from '@/lib/palettes';
+import {
+    VectorInspectionProvider,
+    useVectorInspection,
+} from '@/Components/Viz/VectorInspectionContext';
+
+function ActiveProbe() {
+    const inspection = useVectorInspection();
+    return (
+        <div data-testid="probe">
+            {inspection?.active
+                ? `${inspection.active.label}|${inspection.active.values.length}`
+                : 'empty'}
+        </div>
+    );
+}
 
 describe('<VectorStrip />', () => {
     it('renders one cell per visible value', () => {
@@ -50,5 +65,85 @@ describe('<VectorStrip />', () => {
         render(<VectorStrip values={[]} />);
         expect(screen.getByTestId('vector-strip-svg')).toBeInTheDocument();
         expect(screen.queryAllByTestId(/vector-strip-cell-/)).toHaveLength(0);
+    });
+
+    // M13 chunk 11b: click-to-inspect behaviour.
+
+    it('is NOT inspectable outside a VectorInspectionProvider', () => {
+        render(<VectorStrip values={[0.1, 0.2]} />);
+        const svg = screen.getByTestId('vector-strip-svg');
+        expect(svg.getAttribute('data-inspectable')).toBe('false');
+        expect(svg.getAttribute('role')).toBe('img');
+    });
+
+    it('becomes inspectable inside a VectorInspectionProvider', () => {
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={[0.1, 0.2]} />
+            </VectorInspectionProvider>,
+        );
+        const svg = screen.getByTestId('vector-strip-svg');
+        expect(svg.getAttribute('data-inspectable')).toBe('true');
+        expect(svg.getAttribute('role')).toBe('button');
+        expect(svg.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('clicking an inspectable strip opens the inspection with full values', () => {
+        const values = [0.1, 0.2, 0.3];
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={values} inspectionLabel="my strip" />
+                <ActiveProbe />
+            </VectorInspectionProvider>,
+        );
+        expect(screen.getByTestId('probe').textContent).toBe('empty');
+        fireEvent.click(screen.getByTestId('vector-strip-svg'));
+        expect(screen.getByTestId('probe').textContent).toBe('my strip|3');
+    });
+
+    it('uses caption as fallback label when inspectionLabel is omitted', () => {
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={[1, 2]} caption="Caption fallback" />
+                <ActiveProbe />
+            </VectorInspectionProvider>,
+        );
+        fireEvent.click(screen.getByTestId('vector-strip-svg'));
+        expect(screen.getByTestId('probe').textContent).toBe('Caption fallback|2');
+    });
+
+    it('Enter key opens inspection on a focused inspectable strip', () => {
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={[1, 2]} inspectionLabel="keys" />
+                <ActiveProbe />
+            </VectorInspectionProvider>,
+        );
+        fireEvent.keyDown(screen.getByTestId('vector-strip-svg'), { key: 'Enter' });
+        expect(screen.getByTestId('probe').textContent).toBe('keys|2');
+    });
+
+    it('Space key opens inspection on a focused inspectable strip', () => {
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={[1, 2]} inspectionLabel="space" />
+                <ActiveProbe />
+            </VectorInspectionProvider>,
+        );
+        fireEvent.keyDown(screen.getByTestId('vector-strip-svg'), { key: ' ' });
+        expect(screen.getByTestId('probe').textContent).toBe('space|2');
+    });
+
+    it('does not open inspection when values is empty', () => {
+        render(
+            <VectorInspectionProvider>
+                <VectorStrip values={[]} />
+                <ActiveProbe />
+            </VectorInspectionProvider>,
+        );
+        const svg = screen.getByTestId('vector-strip-svg');
+        expect(svg.getAttribute('data-inspectable')).toBe('false');
+        fireEvent.click(svg);
+        expect(screen.getByTestId('probe').textContent).toBe('empty');
     });
 });
